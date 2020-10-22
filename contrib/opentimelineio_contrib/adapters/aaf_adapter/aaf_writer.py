@@ -146,6 +146,11 @@ class AAFFileTranscriber(object):
 
             tape_timecode_slot.segment.start = int(timecode_start)
             tape_timecode_slot.segment.length = int(timecode_length)
+
+            # This is hard-coded to match what we typically see and what our
+            # reader expects
+            tape_timecode_slot["PhysicalTrackNumber"].value = 1
+
             self.aaf_file.content.mobs.append(tapemob)
             self._unique_tapemobs[mob_id] = tapemob
         return tapemob
