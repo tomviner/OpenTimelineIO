@@ -1,26 +1,5 @@
-#
-# Copyright 2017 Pixar Animation Studios
-#
-# Licensed under the Apache License, Version 2.0 (the "Apache License")
-# with the following modification; you may not use this file except in
-# compliance with the Apache License and the following modification to it:
-# Section 6. Trademarks. is deleted and replaced with:
-#
-# 6. Trademarks. This License does not grant permission to use the trade
-#    names, trademarks, service marks, or product names of the Licensor
-#    and its affiliates, except as required to comply with Section 4(c) of
-#    the License and to reproduce the content of the NOTICE file.
-#
-# You may obtain a copy of the Apache License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the Apache License with the above modification is
-# distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-# KIND, either express or implied. See the Apache License for the specific
-# language governing permissions and limitations under the Apache License.
-#
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Contributors to the OpenTimelineIO project
 
 import unittest
 
@@ -58,7 +37,7 @@ class SerializableColTests(unittest.TestCase, otio_test_utils.OTIOAssertions):
             children=[self.sc]
         )
 
-        self.assertEqual(len(list(sc.each_clip())), 1)
+        self.assertEqual(len(list(sc.find_clips())), 1)
 
         # test deleting an item
         tmp = self.sc[0]
@@ -66,6 +45,9 @@ class SerializableColTests(unittest.TestCase, otio_test_utils.OTIOAssertions):
         self.assertEqual(len(self.sc), 1)
         self.sc[0] = tmp
         self.assertEqual(self.sc[0], tmp)
+
+        with self.assertRaises(IndexError):
+            self.sc[100]
 
     def test_serialize(self):
         encoded = otio.adapters.otio_json.write_to_string(self.sc)
@@ -91,6 +73,54 @@ class SerializableColTests(unittest.TestCase, otio_test_utils.OTIOAssertions):
             "metadata=" + repr(self.sc.metadata) +
             ")"
         )
+
+    def test_find_children(self):
+        cl = otio.schema.Clip()
+        tr = otio.schema.Track()
+        tr.append(cl)
+        tl = otio.schema.Timeline()
+        tl.tracks.append(tr)
+        sc = otio.schema.SerializableCollection()
+        sc.append(tl)
+        result = sc.find_children(otio.schema.Clip)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0], cl)
+
+    def test_find_children_search_range(self):
+        range = otio.opentime.TimeRange(
+            otio.opentime.RationalTime(0.0, 24.0),
+            otio.opentime.RationalTime(24.0, 24.0))
+        cl0 = otio.schema.Clip()
+        cl0.source_range = range
+        cl1 = otio.schema.Clip()
+        cl1.source_range = range
+        cl2 = otio.schema.Clip()
+        cl2.source_range = range
+        tr = otio.schema.Track()
+        tr.append(cl0)
+        tr.append(cl1)
+        tr.append(cl2)
+        tl = otio.schema.Timeline()
+        tl.tracks.append(tr)
+        sc = otio.schema.SerializableCollection()
+        sc.append(tl)
+        result = sc.find_children(otio.schema.Clip, range)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0], cl0)
+
+    def test_find_children_shallow_search(self):
+        cl = otio.schema.Clip()
+        tr = otio.schema.Track()
+        tr.append(cl)
+        tl = otio.schema.Timeline()
+        tl.tracks.append(tr)
+        sc = otio.schema.SerializableCollection()
+        sc.append(tl)
+        result = sc.find_children(otio.schema.Clip, shallow_search=True)
+        self.assertEqual(len(result), 0)
+        result = sc.find_children(otio.schema.Clip, shallow_search=False)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0], cl)
 
 
 if __name__ == '__main__':

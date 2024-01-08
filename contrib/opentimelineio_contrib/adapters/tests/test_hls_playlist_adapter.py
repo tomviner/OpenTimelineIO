@@ -1,33 +1,12 @@
-#
-# Copyright 2017 Pixar Animation Studios
-#
-# Licensed under the Apache License, Version 2.0 (the "Apache License")
-# with the following modification; you may not use this file except in
-# compliance with the Apache License and the following modification to it:
-# Section 6. Trademarks. is deleted and replaced with:
-#
-# 6. Trademarks. This License does not grant permission to use the trade
-#    names, trademarks, service marks, or product names of the Licensor
-#    and its affiliates, except as required to comply with Section 4(c) of
-#    the License and to reproduce the content of the NOTICE file.
-#
-# You may obtain a copy of the Apache License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the Apache License with the above modification is
-# distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-# KIND, either express or implied. See the Apache License for the specific
-# language governing permissions and limitations under the Apache License.
-#
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Contributors to the OpenTimelineIO project
 
 import os
-import tempfile
 import unittest
 
 import opentimelineio as otio
 
+import tempfile
 
 # Reference data
 SAMPLE_DATA_DIR = os.path.join(os.path.dirname(__file__), "sample_data")
@@ -162,13 +141,15 @@ class HLSPMedialaylistAdapterTest(unittest.TestCase):
         track.append(segment1)
 
         # Write out and validate the playlist
-        media_pl_tmp_path = tempfile.mkstemp(suffix=".m3u8", text=True)[1]
-        otio.adapters.write_to_file(t, media_pl_tmp_path)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            media_pl_tmp_path = os.path.join(
+                temp_dir,
+                "test_media_pl_from_mem.m3u8"
+            )
+            otio.adapters.write_to_file(t, media_pl_tmp_path)
 
-        with open(media_pl_tmp_path) as f:
-            pl_string = f.read()
-
-        os.remove(media_pl_tmp_path)
+            with open(media_pl_tmp_path) as f:
+                pl_string = f.read()
 
         # Compare against the reference value
         self.assertEqual(pl_string, MEM_PLAYLIST_REF_VALUE)
@@ -243,25 +224,26 @@ class HLSPMedialaylistAdapterTest(unittest.TestCase):
         self._validate_sample_playlist(timeline)
 
         # Write out and validate both playlists have the same lines
-        media_pl_tmp_path = tempfile.mkstemp(suffix=".m3u8", text=True)[1]
-        otio.adapters.write_to_file(timeline, media_pl_tmp_path)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            media_pl_tmp_path = os.path.join(
+                temp_dir,
+                "test_media_roundtrip.m3u8"
+            )
+            otio.adapters.write_to_file(timeline, media_pl_tmp_path)
 
-        # Read in both playlists
-        with open(hls_path) as f:
-            reference_lines = f.readlines()
+            # Read in both playlists
+            with open(hls_path) as f:
+                reference_lines = f.readlines()
 
-        with open(media_pl_tmp_path) as f:
-            adapter_out_lines = f.readlines()
+            with open(media_pl_tmp_path) as f:
+                adapter_out_lines = f.readlines()
 
-        # Using otio as well
-        in_timeline = otio.adapters.read_from_file(media_pl_tmp_path)
-
-        # Remove the temp out file
-        os.remove(media_pl_tmp_path)
+            # Using otio as well
+            in_timeline = otio.adapters.read_from_file(media_pl_tmp_path)
 
         # Strip newline chars
-        reference_lines = [l.strip('\n') for l in reference_lines]
-        adapter_out_lines = [l.strip('\n') for l in adapter_out_lines]
+        reference_lines = [line.strip('\n') for line in reference_lines]
+        adapter_out_lines = [line.strip('\n') for line in adapter_out_lines]
 
         # Compare the lines
         self.assertEqual(reference_lines, adapter_out_lines)
@@ -287,12 +269,15 @@ class HLSPMedialaylistAdapterTest(unittest.TestCase):
         timeline_streaming_md['max_segment_duration'] = seg_max_duration
 
         # Write out the playlist
-        media_pl_tmp_path = tempfile.mkstemp(suffix=".m3u8", text=True)[1]
-        otio.adapters.write_to_file(timeline, media_pl_tmp_path)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            media_pl_tmp_path = os.path.join(
+                temp_dir,
+                "test_media_segment_size.m3u8"
+            )
+            otio.adapters.write_to_file(timeline, media_pl_tmp_path)
 
-        # Read in the playlist
-        in_timeline = otio.adapters.read_from_file(media_pl_tmp_path)
-        os.remove(media_pl_tmp_path)
+            # Read in the playlist
+            in_timeline = otio.adapters.read_from_file(media_pl_tmp_path)
 
         # Pick a duration that segments won't exceed but is less than max
         seg_upper_duration = otio.opentime.RationalTime(7, 1)
@@ -335,19 +320,22 @@ class HLSPMedialaylistAdapterTest(unittest.TestCase):
 
         # Configure the playlist to be an iframe list
         track_hls_metadata = timeline.tracks[0].metadata['HLS']
-        del(track_hls_metadata['EXT-X-INDEPENDENT-SEGMENTS'])
+        del track_hls_metadata['EXT-X-INDEPENDENT-SEGMENTS']
         track_hls_metadata['EXT-X-I-FRAMES-ONLY'] = None
 
         # Write out the playlist
-        media_pl_tmp_path = tempfile.mkstemp(suffix=".m3u8", text=True)[1]
-        otio.adapters.write_to_file(timeline, media_pl_tmp_path)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            media_pl_tmp_path = os.path.join(
+                temp_dir,
+                "test_iframe_segment_size.m3u8"
+            )
+            otio.adapters.write_to_file(timeline, media_pl_tmp_path)
 
-        # Read in the playlist
-        in_timeline = otio.adapters.read_from_file(media_pl_tmp_path)
-        with open(media_pl_tmp_path) as f:
-            pl_lines = f.readlines()
-        pl_lines = [l.strip('\n') for l in pl_lines]
-        os.remove(media_pl_tmp_path)
+            # Read in the playlist
+            in_timeline = otio.adapters.read_from_file(media_pl_tmp_path)
+            with open(media_pl_tmp_path) as f:
+                pl_lines = f.readlines()
+            pl_lines = [line.strip('\n') for line in pl_lines]
 
         # validate the TARGETDURATION value is correct
         self.assertTrue('#EXT-X-TARGETDURATION:6' in pl_lines)
@@ -420,19 +408,18 @@ class HLSPMasterPlaylistAdapterTest(unittest.TestCase):
         t.tracks.append(atrack)
 
         # Write out and validate the playlist
-        media_pl_tmp_path = tempfile.mkstemp(
-            suffix="master.m3u8",
-            text=True
-        )[1]
-        otio.adapters.write_to_file(t, media_pl_tmp_path)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            media_pl_tmp_path = os.path.join(
+                temp_dir,
+                "master.m3u8"
+            )
+            otio.adapters.write_to_file(t, media_pl_tmp_path)
 
-        with open(media_pl_tmp_path) as f:
-            pl_string = f.read()
-
-        os.remove(media_pl_tmp_path)
+            with open(media_pl_tmp_path) as f:
+                pl_string = f.read()
 
         # Drop blank lines before comparing
-        pl_string = '\n'.join((line for line in pl_string.split('\n') if line))
+        pl_string = '\n'.join(line for line in pl_string.split('\n') if line)
 
         # Compare against the reference value
         self.assertEqual(pl_string, MEM_MASTER_PLAYLIST_REF_VALUE)
@@ -483,16 +470,15 @@ class HLSPMasterPlaylistAdapterTest(unittest.TestCase):
         t.tracks.append(atrack)
 
         # Write out and validate the playlist
-        media_pl_tmp_path = tempfile.mkstemp(
-            suffix="master.m3u8",
-            text=True
-        )[1]
-        otio.adapters.write_to_file(t, media_pl_tmp_path)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            media_pl_tmp_path = os.path.join(
+                temp_dir,
+                "master.m3u8"
+            )
+            otio.adapters.write_to_file(t, media_pl_tmp_path)
 
-        with open(media_pl_tmp_path) as f:
-            pl_string = f.read()
-
-        os.remove(media_pl_tmp_path)
+            with open(media_pl_tmp_path) as f:
+                pl_string = f.read()
 
         # Drop blank lines before comparing
         pl_string = '\n'.join(line for line in pl_string.split('\n') if line)
@@ -568,16 +554,15 @@ class HLSPMasterPlaylistAdapterTest(unittest.TestCase):
         t.tracks.append(atrack)
 
         # Write out and validate the playlist
-        media_pl_tmp_path = tempfile.mkstemp(
-            suffix="master.m3u8",
-            text=True
-        )[1]
-        otio.adapters.write_to_file(t, media_pl_tmp_path)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            media_pl_tmp_path = os.path.join(
+                temp_dir,
+                "master.m3u8"
+            )
+            otio.adapters.write_to_file(t, media_pl_tmp_path)
 
-        with open(media_pl_tmp_path) as f:
-            pl_string = f.read()
-
-        os.remove(media_pl_tmp_path)
+            with open(media_pl_tmp_path) as f:
+                pl_string = f.read()
 
         # Drop blank lines before comparing
         pl_string = '\n'.join(line for line in pl_string.split('\n') if line)
@@ -610,16 +595,15 @@ class HLSPMasterPlaylistAdapterTest(unittest.TestCase):
         )
 
         # Write out and validate the playlist
-        media_pl_tmp_path = tempfile.mkstemp(
-            suffix="master.m3u8",
-            text=True
-        )[1]
-        otio.adapters.write_to_file(timeline, media_pl_tmp_path)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            media_pl_tmp_path = os.path.join(
+                temp_dir,
+                "test_media_pl_from_mem.m3u8"
+            )
+            otio.adapters.write_to_file(timeline, media_pl_tmp_path)
 
-        with open(media_pl_tmp_path) as f:
-            pl_string = f.read()
-
-        os.remove(media_pl_tmp_path)
+            with open(media_pl_tmp_path) as f:
+                pl_string = f.read()
 
         # ensure metadata that wasn't supposed to didn't leak out
         for line in pl_string.split('\n'):
@@ -696,19 +680,18 @@ class HLSPMasterPlaylistAdapterTest(unittest.TestCase):
         track.append(segment1)
 
         # Write out and validate the playlist
-        master_pl_tmp_path = tempfile.mkstemp(
-            suffix='master.m3u8',
-            text=True
-        )[1]
-        otio.adapters.write_to_file(t, master_pl_tmp_path)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            master_pl_tmp_path = os.path.join(
+                temp_dir,
+                "master.m3u8"
+            )
+            otio.adapters.write_to_file(t, master_pl_tmp_path)
 
-        with open(master_pl_tmp_path) as f:
-            pl_string = f.read()
-
-        os.remove(master_pl_tmp_path)
+            with open(master_pl_tmp_path) as f:
+                pl_string = f.read()
 
         # Drop blank lines before comparing
-        pl_string = '\n'.join((line for line in pl_string.split('\n') if line))
+        pl_string = '\n'.join(line for line in pl_string.split('\n') if line)
 
         # Compare against the reference value
         self.assertEqual(pl_string, MEM_SINGLE_TRACK_MASTER_PLAYLIST_REF_VALUE)

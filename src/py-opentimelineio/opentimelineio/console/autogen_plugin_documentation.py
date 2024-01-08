@@ -1,27 +1,7 @@
 #!/usr/bin/env python
 #
-# copyright 2019 pixar animation studios
-#
-# licensed under the apache license, version 2.0 (the "apache license")
-# with the following modification; you may not use this file except in
-# compliance with the apache license and the following modification to it:
-# section 6. trademarks. is deleted and replaced with:
-#
-# 6. trademarks. this license does not grant permission to use the trade
-#    names, trademarks, service marks, or product names of the licensor
-#    and its affiliates, except as required to comply with section 4(c) of
-#    the license and to reproduce the content of the notice file.
-#
-# you may obtain a copy of the apache license at
-#
-#     http://www.apache.org/licenses/license-2.0
-#
-# unless required by applicable law or agreed to in writing, software
-# distributed under the apache license with the above modification is
-# distributed on an "as is" basis, without warranties or conditions of any
-# kind, either express or implied. see the apache license for the specific
-# language governing permissions and limitations under the apache license.
-#
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Contributors to the OpenTimelineIO project
 
 """Generates documentation of all the built in plugins for OpenTimelineIO"""
 
@@ -31,17 +11,15 @@
 import argparse
 import tempfile
 import textwrap
-import os
 
-try:
-    # python2
-    import StringIO as io
-except ImportError:
-    # python3
-    import io
+import io
 
 import opentimelineio as otio
 
+
+# force using the same path separator regardless of what the OS says
+# this ensures same behavior on windows and linux
+PATH_SEP = "/"
 
 ALL_PLUGINS_TEXT = """This documents all the plugins that otio could find."""
 
@@ -89,11 +67,9 @@ MANIFEST_CONTENT_TEMPLATE = """
 
 Adapter plugins convert to and from OpenTimelineIO.
 
-<a href="adapters.html" target="_blank"> Adapters documentation page for more
-information</a>
+[Adapters documentation page for more information](./adapters).
 
-<a href="write-an-adapter.html" target="_blank">Tutorial on how to write an
-adapter.</a>
+[Tutorial on how to write an adapter](write-an-adapter).
 
 {adapters}
 
@@ -102,8 +78,7 @@ adapter.</a>
 Media Linkers run after the adapter has read in the file and convert the media
 references into valid references where appropriate.
 
-<a href="write-a-media-linker.html" target="_blank"> Tutorial on how to write a
-Media Linker</a>
+[Tutorial on how to write a Media Linker](write-a-media-linker).
 
 {media_linkers}
 
@@ -111,8 +86,7 @@ Media Linker</a>
 
 SchemaDef plugins define new external schema.
 
-<a href="write-a-schemadef.html" target="_blank"> Tutorial on how to write a
-schemadef</a>
+[Tutorial on how to write a schemadef](write-a-schemadef).
 
 {schemadefs}
 
@@ -120,8 +94,7 @@ schemadef</a>
 
 HookScripts are extra plugins that run on _hooks_.
 
-<a href="write-a-hookscript.html" target="_blank">Tutorial on how to write a
-hookscript.</a>
+[Tutorial on how to write a hookscript](write-a-hookscript).
 
 {hook_scripts}
 
@@ -213,9 +186,17 @@ def _parsed_args():
 
 
 def _format_plugin(plugin_map, extra_stuff, sanitized_paths):
+    # XXX: always force unix path separator so that the output is consistent
+    # between every platform.
+    PATH_SEP = "/"
+
     path = plugin_map['path']
+
+    # force using PATH_SEP in place of os.path.sep
+    path = path.replace("\\", PATH_SEP)
+
     if sanitized_paths:
-        path = os.path.sep.join(path.split(os.path.sep)[-3:])
+        path = PATH_SEP.join(path.split(PATH_SEP)[-3:])
     return PLUGIN_TEMPLATE.format(
         name=plugin_map['name'],
         doc=plugin_map['doc'],
@@ -253,15 +234,15 @@ def _format_adapters(plugin_map):
         doc = feature_data['doc']
         if doc:
             feature_lines.append(
-                _format_doc(doc, "- {}: \n```\n".format(feature)) + "\n```"
+                _format_doc(doc, f"- {feature}: \n```\n") + "\n```"
             )
         else:
             feature_lines.append(
-                "- {}:".format(feature)
+                f"- {feature}:"
             )
 
         for arg in feature_data["args"]:
-            feature_lines.append("  - {}".format(arg))
+            feature_lines.append(f"  - {arg}")
 
     return ADAPTER_TEMPLATE.format("\n".join(feature_lines))
 
@@ -273,10 +254,10 @@ def _format_schemadefs(plugin_map):
         doc = plugin_map['SchemaDefs'][sd]['doc']
         if doc:
             feature_lines.append(
-                _format_doc(doc, "- {}: \n```\n".format(sd)) + "\n```"
+                _format_doc(doc, f"- {sd}: \n```\n") + "\n```"
             )
         else:
-            feature_lines.append("- {}:".format(sd))
+            feature_lines.append(f"- {sd}:")
 
     return SCHEMADEF_TEMPLATE.format("\n".join(feature_lines))
 
@@ -320,7 +301,7 @@ def _manifest_formatted(
 
             pt_lines.append(plug_lines)
 
-        display_map[pt] = "\n".join((str(l) for l in pt_lines))
+        display_map[pt] = "\n".join(str(line) for line in pt_lines)
 
     return MANIFEST_CONTENT_TEMPLATE.format(
         adapters=display_map['adapters'],
@@ -331,25 +312,30 @@ def _manifest_formatted(
     )
 
 
-def generate_and_write_documentation_plugins(public_only=False, sanitized_paths=False):
+def generate_and_write_documentation_plugins(
+        public_only=False,
+        sanitized_paths=False
+):
+    md_out = io.StringIO()
+
     plugin_info_map = otio.plugins.plugin_info_map()
 
     # start with the manifest list
-    md_out = io.StringIO()
-
-    manifest_path_list = plugin_info_map['manifests']
+    manifest_path_list = plugin_info_map['manifests'][:]
 
     if public_only:
         manifest_path_list = manifest_path_list[:2]
 
     sanitized_paths = manifest_path_list[:]
     if sanitized_paths:
+        # conform all paths to unix-style path separators and leave relative
+        # paths (relative to root of OTIO directory)
         sanitized_paths = [
-            os.path.sep.join(p.split(os.path.sep)[-3:])
+            PATH_SEP.join(p.replace("\\", PATH_SEP).split(PATH_SEP)[-3:])
             for p in manifest_path_list
         ]
 
-    manifest_list = "\n".join("- `{}`".format(mp) for mp in sanitized_paths)
+    manifest_list = "\n".join(f"- `{mp}`" for mp in sanitized_paths)
 
     core_manifest_path = manifest_path_list[0]
     core_manifest_path_sanitized = sanitized_paths[0]
@@ -372,7 +358,7 @@ def generate_and_write_documentation_plugins(public_only=False, sanitized_paths=
         local_manifest_paths = manifest_path_list[2:]
         local_manifest_paths_sanitized = sanitized_paths[2:]
         local_manifest_list = "\n".join(
-            "- `{}`".format(mp) for mp in local_manifest_paths_sanitized
+            f"- `{mp}`" for mp in local_manifest_paths_sanitized
         )
         local_manifest_body = _manifest_formatted(
             plugin_info_map,
@@ -427,7 +413,7 @@ def main():
     with open(output, 'w') as fo:
         fo.write(docs)
 
-    print("wrote documentation to {}.".format(output))
+    print(f"wrote documentation to {output}.")
 
 
 if __name__ == '__main__':

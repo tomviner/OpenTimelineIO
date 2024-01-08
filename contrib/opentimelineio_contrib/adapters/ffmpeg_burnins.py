@@ -1,24 +1,6 @@
-# MIT License
-#
-# Copyright (c) 2017 Ed Caspersen
-#
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
-#
-# The above copyright notice and this permission notice shall be included in
-# allcopies or substantial portions of the Software.
-#
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-# SOFTWARE.
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Contributors to the OpenTimelineIO project
+
 """
 This module provides an interface to allow users to easily
 build out an FFMPEG command with all the correct filters
@@ -55,7 +37,7 @@ def _system_font():
         fonts = ('Menlo.ttc',)
     else:
         # assuming linux
-        font_path = 'usr/share/fonts/msttcorefonts'
+        font_path = '/usr/share/fonts/msttcorefonts'
         fonts = ('arial.ttf', 'times.ttf', 'couri.ttf')
 
     system_font = None
@@ -119,15 +101,15 @@ class Options(dict):
     }
 
     def __init__(self, **kwargs):
-        super(Options, self).__init__()
+        super().__init__()
         params = self._params.copy()
         params.update(kwargs)
-        super(Options, self).update(**params)
+        super().update(**params)
 
     def __setitem__(self, key, value):
         if key not in self._params:
             raise KeyError("Not a valid option key '%s'" % key)
-        super(Options, self).update({key: value})
+        super().update({key: value})
 
 
 class FrameNumberOptions(Options):
@@ -150,7 +132,7 @@ class FrameNumberOptions(Options):
             'frame_offset': 0,
             'expression': None
         })
-        super(FrameNumberOptions, self).__init__(**kwargs)
+        super().__init__(**kwargs)
 
 
 class TextOptions(Options):
@@ -188,10 +170,10 @@ class TimeCodeOptions(Options):
             'frame_offset': 0,
             'fps': 24
         })
-        super(TimeCodeOptions, self).__init__(**kwargs)
+        super().__init__(**kwargs)
 
 
-class Burnins(object):
+class Burnins:
     """
     Class that provides convenience API for building filter
     flags for the FFMPEG command.
@@ -417,7 +399,7 @@ def _drawtext(align, resolution, text, options):
 
 
 def _frames_to_timecode(frames, framerate):
-    return '{0:02d}:{1:02d}:{2:02d}:{3:02d}'.format(
+    return '{:02d}:{:02d}:{:02d}:{:02d}'.format(
         int(frames / (3600 * framerate)),
         int(frames / (60 * framerate) % 60),
         int(frames / framerate % 60),

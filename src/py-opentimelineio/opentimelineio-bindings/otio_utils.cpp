@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright Contributors to the OpenTimelineIO project
+
 #include "otio_utils.h"
 #include "otio_anyDictionary.h"
 #include "otio_anyVector.h"
@@ -7,6 +10,7 @@
 #include "opentime/timeTransform.h"
 #include "opentimelineio/serializableObject.h"
 #include "opentimelineio/safely_typed_any.h"
+#include "opentimelineio/stringUtils.h"
 
 #include <map>
 #include <cstring>
@@ -39,6 +43,11 @@ py::object plain_int(int64_t i) {
     return py::reinterpret_steal<py::object>(p);
 }
 
+py::object plain_uint(uint64_t i) {
+    PyObject *p = PyLong_FromUnsignedLongLong(i);
+    return py::reinterpret_steal<py::object>(p);
+}
+
 void _build_any_to_py_dispatch_table() {
     auto& t = _py_cast_dispatch_table;
 
@@ -46,6 +55,7 @@ void _build_any_to_py_dispatch_table() {
     t[&typeid(bool)] = [](any const& a, bool) { return py::cast(safely_cast_bool_any(a)); };
     t[&typeid(int)] = [](any const& a, bool) {  return plain_int(safely_cast_int_any(a)); };
     t[&typeid(int64_t)] = [](any const& a, bool) {  return plain_int(safely_cast_int64_any(a)); };
+    t[&typeid(uint64_t)] = [](any const& a, bool) {  return plain_uint(safely_cast_uint64_any(a)); };
     t[&typeid(double)] = [](any const& a, bool) { return py::cast(safely_cast_double_any(a)); };
     t[&typeid(std::string)] = [](any const& a, bool) { return py::cast(safely_cast_string_any(a)); };
     t[&typeid(RationalTime)] = [](any const& a, bool) { return py::cast(safely_cast_rational_time_any(a)); };
@@ -85,7 +95,6 @@ void _build_any_to_py_dispatch_table() {
 }
 
 static py::object _value_to_any = py::none();
-static py::object _value_to_so_vector = py::none();
 
 static void py_to_any(py::object const& o, any* result) {
     if (_value_to_any.is_none()) {
@@ -104,39 +113,11 @@ AnyDictionary py_to_any_dictionary(py::object const& o) {
     any a;
     py_to_any(o, &a);
     if (!compare_typeids(a.type(), typeid(AnyDictionary))) {
-        throw py::type_error(string_printf("expected an AnyDictionary (i.e. metadata); got %s instead",
-                                           demangled_type_name(a).c_str()));
+        throw py::type_error(string_printf("Expected an AnyDictionary (i.e. metadata); got %s instead",
+                                           type_name_for_error_message(a).c_str()));
     }
 
     return safely_cast_any_dictionary_any(a);
-}
-
-std::vector<SerializableObject*> py_to_so_vector(pybind11::object const& o) {
-    if (_value_to_so_vector.is_none()) {
-        py::object core = py::module::import("opentimelineio.core");
-        _value_to_so_vector = core.attr("_value_to_so_vector");
-    }
-
-    std::vector<SerializableObject*> result;
-    if (o.is_none()) {
-        return result;
-    }
-
-    /*
-     * We're depending on _value_to_so_vector(), written in Python, to
-     * not screw up, or we're going to crash.  (1) It has to give us
-     * back an AnyVector.  (2) Every element has to be a
-     * SerializableObject::Retainer<>.
-     */
-
-    py::object obj_vector = _value_to_so_vector(o);     // need to retain this here or we'll lose the any...
-    AnyVector const& v = temp_safely_cast_any_vector_any(obj_vector.cast<PyAny*>()->a);
-
-    result.reserve(v.size());
-    for (auto e: v) {
-        result.push_back(safely_cast_retainer_any(e));
-    }
-    return result;
 }
 
 py::object any_to_py(any const& a, bool top_level) {
@@ -153,7 +134,7 @@ py::object any_to_py(any const& a, bool top_level) {
 
     if (e == _py_cast_dispatch_table.end()) {
         throw py::value_error(string_printf("Unable to cast any of type %s to python object",
-                                            demangled_type_name(tInfo).c_str()));
+                                            type_name_for_error_message(tInfo).c_str()));
     }
 
     return e->second(a, top_level);

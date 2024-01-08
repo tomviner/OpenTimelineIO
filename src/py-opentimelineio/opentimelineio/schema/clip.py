@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Contributors to the OpenTimelineIO project
+
 from .. core._core_utils import add_method
 from .. import _otio
 
@@ -30,5 +33,5 @@ def __repr__(self):
 
 
 @add_method(_otio.Clip)
-def each_clip(self, search_range=None):
+def find_clips(self, search_range=None):
     yield self

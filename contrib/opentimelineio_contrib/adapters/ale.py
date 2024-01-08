@@ -1,32 +1,14 @@
-#
-# Copyright 2017 Pixar Animation Studios
-#
-# Licensed under the Apache License, Version 2.0 (the "Apache License")
-# with the following modification; you may not use this file except in
-# compliance with the Apache License and the following modification to it:
-# Section 6. Trademarks. is deleted and replaced with:
-#
-# 6. Trademarks. This License does not grant permission to use the trade
-#    names, trademarks, service marks, or product names of the Licensor
-#    and its affiliates, except as required to comply with Section 4(c) of
-#    the License and to reproduce the content of the NOTICE file.
-#
-# You may obtain a copy of the Apache License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the Apache License with the above modification is
-# distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-# KIND, either express or implied. See the Apache License for the specific
-# language governing permissions and limitations under the Apache License.
-#
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Contributors to the OpenTimelineIO project
 
-"""OpenTimelineIO Avid Log Exchange (ALE) Adapter"""
+__doc__ = """OpenTimelineIO Avid Log Exchange (ALE) Adapter"""
+
+
 import re
 import opentimelineio as otio
 
 DEFAULT_VIDEO_FORMAT = '1080'
+ASC_SOP_REGEX = re.compile(r'(-*\d+\.\d+)')
 
 
 def AVID_VIDEO_FORMAT_FROM_WIDTH_HEIGHT(width, height):
@@ -49,7 +31,7 @@ class ALEParseError(otio.exceptions.OTIOError):
     pass
 
 
-def _parse_data_line(line, columns, fps):
+def _parse_data_line(line, columns, fps, ale_name_column_key='Name'):
     row = line.split("\t")
 
     if len(row) < len(columns):
@@ -67,7 +49,7 @@ def _parse_data_line(line, columns, fps):
         metadata = dict(zip(columns, row))
 
         clip = otio.schema.Clip()
-        clip.name = metadata.pop("Name", None)
+        clip.name = metadata.get(ale_name_column_key, '')
 
         # When looking for Start, Duration and End, they might be missing
         # or blank. Treat None and "" as the same via: get(k,"")!=""
@@ -78,7 +60,7 @@ def _parse_data_line(line, columns, fps):
             try:
                 start = otio.opentime.from_timecode(value, fps)
             except (ValueError, TypeError):
-                raise ALEParseError("Invalid Start timecode: {}".format(value))
+                raise ALEParseError(f"Invalid Start timecode: {value}")
             duration = None
             end = None
             if metadata.get("Duration", "") != "":
@@ -116,6 +98,32 @@ def _parse_data_line(line, columns, fps):
                 target_url=source
             )
 
+        # If available, collect cdl values in the same way we do for CMX EDL
+        cdl = {}
+
+        if metadata.get('CDL'):
+            cdl = _cdl_values_from_metadata(metadata['CDL'])
+            if cdl:
+                del metadata['CDL']
+
+        # If we have more specific metadata, let's use them
+        if metadata.get('ASC_SOP'):
+            cdl = _cdl_values_from_metadata(metadata['ASC_SOP'])
+
+            if cdl:
+                del metadata['ASC_SOP']
+
+        if metadata.get('ASC_SAT'):
+            try:
+                asc_sat_value = float(metadata['ASC_SAT'])
+                cdl.update(asc_sat=asc_sat_value)
+                del metadata['ASC_SAT']
+            except ValueError:
+                pass
+
+        if cdl:
+            clip.metadata['cdl'] = cdl
+
         # We've pulled out the key/value pairs that we treat specially.
         # Put the remaining key/values into clip.metadata["ALE"]
         clip.metadata["ALE"] = metadata
@@ -125,6 +133,30 @@ def _parse_data_line(line, columns, fps):
         raise ALEParseError("Error parsing line: {}\n{}".format(
             line, repr(ex)
         ))
+
+
+def _cdl_values_from_metadata(asc_sop_string):
+
+    if not isinstance(asc_sop_string, str):
+        return {}
+
+    asc_sop_values = ASC_SOP_REGEX.findall(asc_sop_string)
+
+    cdl_data = {}
+
+    if len(asc_sop_values) >= 9:
+
+        cdl_data.update(
+            asc_sop={
+                'slope': [float(v) for v in asc_sop_values[:3]],
+                'offset': [float(v) for v in asc_sop_values[3:6]],
+                'power': [float(v) for v in asc_sop_values[6:9]]
+            })
+
+        if len(asc_sop_values) == 10:
+            cdl_data.update(asc_sat=float(asc_sop_values[9]))
+
+    return cdl_data
 
 
 def _video_format_from_metadata(clips):
@@ -150,7 +182,8 @@ def _video_format_from_metadata(clips):
         return AVID_VIDEO_FORMAT_FROM_WIDTH_HEIGHT(max_width, max_height)
 
 
-def read_from_string(input_str, fps=24):
+def read_from_string(input_str, fps=24, **adapter_argument_map):
+    ale_name_column_key = adapter_argument_map.get('ale_name_column_key', 'Name')
 
     collection = otio.schema.SerializableCollection()
     header = {}
@@ -201,7 +234,10 @@ def read_from_string(input_str, fps=24):
                 if line.strip() == "":
                     continue
 
-                clip = _parse_data_line(line, columns, fps)
+                clip = _parse_data_line(line,
+                                        columns,
+                                        fps,
+                                        ale_name_column_key=ale_name_column_key)
 
                 collection.append(clip)
 
@@ -216,7 +252,7 @@ def read_from_string(input_str, fps=24):
 def write_to_string(input_otio, columns=None, fps=None, video_format=None):
 
     # Get all the clips we're going to export
-    clips = list(input_otio.each_clip())
+    clips = list(input_otio.find_clips())
 
     result = ""
 
@@ -249,7 +285,7 @@ def write_to_string(input_otio, columns=None, fps=None, video_format=None):
     headers = list(header.items())
     headers.sort()  # make the output predictable
     for key, val in headers:
-        result += "{}\t{}\n".format(key, val)
+        result += f"{key}\t{val}\n"
 
     # If the caller passed in a list of columns, use that, otherwise
     # we need to discover the columns that should be output.

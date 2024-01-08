@@ -1,18 +1,19 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright Contributors to the OpenTimelineIO project
+
 #pragma once
 
 #include "opentimelineio/version.h"
 #include <string>
 
-namespace opentimelineio { namespace OPENTIMELINEIO_VERSION  {
-    
+namespace opentimelineio { namespace OPENTIMELINEIO_VERSION {
+
 class SerializableObject;
 
-struct ErrorStatus {
-    operator bool () {
-        return outcome != Outcome::OK;
-    }
-    
-    enum Outcome {
+struct ErrorStatus
+{
+    enum Outcome
+    {
         OK = 0,
         NOT_IMPLEMENTED,
         UNRESOLVED_OBJECT_REFERENCE,
@@ -36,40 +37,62 @@ struct ErrorStatus {
         CANNOT_COMPUTE_AVAILABLE_RANGE,
         INVALID_TIME_RANGE,
         OBJECT_WITHOUT_DURATION,
-        CANNOT_TRIM_TRANSITION
+        CANNOT_TRIM_TRANSITION,
+        OBJECT_CYCLE,
+        CANNOT_COMPUTE_BOUNDS,
+        MEDIA_REFERENCES_DO_NOT_CONTAIN_ACTIVE_KEY,
+        MEDIA_REFERENCES_CONTAIN_EMPTY_KEY,
+        NOT_A_GAP
     };
 
     ErrorStatus()
-        : outcome(OK),
-          object_details(nullptr) {
-    }
-    
+        : outcome(OK)
+        , object_details(nullptr)
+    {}
+
     ErrorStatus(Outcome in_outcome)
-        : outcome(in_outcome),
-          details(outcome_to_string(in_outcome)),
-          full_description(details),
-          object_details(nullptr) {
-    }
-    
-    ErrorStatus(Outcome in_outcome, std::string const& in_details,
-                SerializableObject const* object = nullptr)
-        : outcome(in_outcome),
-          details(in_details),
-          full_description(outcome_to_string(in_outcome) + ": " + in_details),
-          object_details(object) {
-    }
-    
-    ErrorStatus& operator=(Outcome in_outcome) {
+        : outcome(in_outcome)
+        , details(outcome_to_string(in_outcome))
+        , full_description(details)
+        , object_details(nullptr)
+    {}
+
+    ErrorStatus(
+        Outcome                   in_outcome,
+        std::string const&        in_details,
+        SerializableObject const* object = nullptr)
+        : outcome(in_outcome)
+        , details(in_details)
+        , full_description(outcome_to_string(in_outcome) + ": " + in_details)
+        , object_details(object)
+    {}
+
+    ErrorStatus& operator=(Outcome in_outcome)
+    {
         *this = ErrorStatus(in_outcome);
         return *this;
     }
 
-    Outcome outcome;
-    std::string details;
-    std::string full_description;
+    Outcome                   outcome;
+    std::string               details;
+    std::string               full_description;
     SerializableObject const* object_details;
 
     static std::string outcome_to_string(Outcome);
 };
 
-} }
+// Check whether the given ErrorStatus is an error.
+constexpr bool
+is_error(const ErrorStatus& es) noexcept
+{
+    return ErrorStatus::Outcome::OK != es.outcome;
+}
+
+// Check whether the given ErrorStatus* is non-null and an error.
+constexpr bool
+is_error(const ErrorStatus* es) noexcept
+{
+    return es && ErrorStatus::Outcome::OK != es->outcome;
+}
+
+}} // namespace opentimelineio::OPENTIMELINEIO_VERSION

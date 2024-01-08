@@ -1,26 +1,5 @@
-#
-# Copyright 2017 Pixar Animation Studios
-#
-# Licensed under the Apache License, Version 2.0 (the "Apache License")
-# with the following modification; you may not use this file except in
-# compliance with the Apache License and the following modification to it:
-# Section 6. Trademarks. is deleted and replaced with:
-#
-# 6. Trademarks. This License does not grant permission to use the trade
-#    names, trademarks, service marks, or product names of the Licensor
-#    and its affiliates, except as required to comply with Section 4(c) of
-#    the License and to reproduce the content of the NOTICE file.
-#
-# You may obtain a copy of the Apache License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the Apache License with the above modification is
-# distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-# KIND, either express or implied. See the Apache License for the specific
-# language governing permissions and limitations under the Apache License.
-#
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Contributors to the OpenTimelineIO project
 
 """Base class for OTIO plugins that are exposed by manifests."""
 
@@ -77,26 +56,15 @@ class PythonPlugin(core.SerializableObject):
     def __init__(
         self,
         name=None,
-        execution_scope=None,
         filepath=None,
     ):
         core.SerializableObject.__init__(self)
         self.name = name
-        self.execution_scope = execution_scope
         self.filepath = filepath
         self._json_path = None
         self._module = None
 
     name = core.serializable_field("name", doc="Adapter name.")
-    execution_scope = core.serializable_field(
-        "execution_scope",
-        str,
-        doc=(
-            "Describes whether this adapter is executed in the current python"
-            " process or in a subshell.  Options are: "
-            "['in process', 'out of process']."
-        )
-    )
     filepath = core.serializable_field(
         "filepath",
         str,
@@ -147,7 +115,7 @@ class PythonPlugin(core.SerializableObject):
         with file_obj:
             # this will reload the module if it has already been loaded.
             mod = imp.load_module(
-                "opentimelineio.{}.{}".format(namespace, self.name),
+                f"opentimelineio.{namespace}.{self.name}",
                 file_obj,
                 pathname,
                 description
@@ -169,6 +137,6 @@ class PythonPlugin(core.SerializableObject):
         # collects the error handling into a common place.
         if not hasattr(self.module(), func_name):
             raise exceptions.AdapterDoesntSupportFunctionError(
-                "Sorry, {} doesn't support {}.".format(self.name, func_name)
+                f"Sorry, {self.name} doesn't support {func_name}."
             )
         return (getattr(self.module(), func_name)(**kwargs))

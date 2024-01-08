@@ -1,30 +1,14 @@
-#
-# Copyright 2017 Pixar Animation Studios
-#
-# Licensed under the Apache License, Version 2.0 (the "Apache License")
-# with the following modification; you may not use this file except in
-# compliance with the Apache License and the following modification to it:
-# Section 6. Trademarks. is deleted and replaced with:
-#
-# 6. Trademarks. This License does not grant permission to use the trade
-#    names, trademarks, service marks, or product names of the Licensor
-#    and its affiliates, except as required to comply with Section 4(c) of
-#    the License and to reproduce the content of the NOTICE file.
-#
-# You may obtain a copy of the Apache License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the Apache License with the above modification is
-# distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-# KIND, either express or implied. See the Apache License for the specific
-# language governing permissions and limitations under the Apache License.
-#
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Contributors to the OpenTimelineIO project
 
-from PySide2 import QtGui, QtCore, QtWidgets
+try:
+    from PySide6 import QtGui, QtCore, QtWidgets
+    from PySide6.QtGui import QFontMetrics
+except ImportError:
+    from PySide2 import QtGui, QtCore, QtWidgets
+    from PySide2.QtGui import QFontMetrics
+
 import opentimelineio as otio
-
 
 TIME_SLIDER_HEIGHT = 20
 MEDIA_TYPE_SEPARATOR_HEIGHT = 5
@@ -35,12 +19,28 @@ LABEL_MARGIN = 5
 MARKER_SIZE = 10
 EFFECT_HEIGHT = (1.0 / 3.0) * TRACK_HEIGHT
 HIGHLIGHT_WIDTH = 5
+TRACK_NAME_WIDGET_WIDTH = 100.0
+SHORT_NAME_LENGTH = 7
+CURRENT_ZOOM_LEVEL = 1.0
+MARKER_COLORS = {
+    otio.schema.MarkerColor.RED: (0xff, 0x00, 0x00, 0xff),
+    otio.schema.MarkerColor.PINK: (0xff, 0x70, 0x70, 0xff),
+    otio.schema.MarkerColor.ORANGE: (0xff, 0xa0, 0x00, 0xff),
+    otio.schema.MarkerColor.YELLOW: (0xff, 0xff, 0x00, 0xff),
+    otio.schema.MarkerColor.GREEN: (0x00, 0xff, 0x00, 0xff),
+    otio.schema.MarkerColor.CYAN: (0x00, 0xff, 0xff, 0xff),
+    otio.schema.MarkerColor.BLUE: (0x00, 0x00, 0xff, 0xff),
+    otio.schema.MarkerColor.PURPLE: (0xa0, 0x00, 0xd0, 0xff),
+    otio.schema.MarkerColor.MAGENTA: (0xff, 0x00, 0xff, 0xff),
+    otio.schema.MarkerColor.WHITE: (0xff, 0xff, 0xff, 0xff),
+    otio.schema.MarkerColor.BLACK: (0x00, 0x00, 0x00, 0xff)
+}
 
 
 class BaseItem(QtWidgets.QGraphicsRectItem):
 
     def __init__(self, item, timeline_range, *args, **kwargs):
-        super(BaseItem, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.item = item
         self.timeline_range = timeline_range
 
@@ -67,10 +67,13 @@ class BaseItem(QtWidgets.QGraphicsRectItem):
         self._set_labels()
         self._set_tooltip()
 
+        self.x_value = 0.0
+        self.current_x_offset = TRACK_NAME_WIDGET_WIDTH
+
     def paint(self, *args, **kwargs):
         new_args = [args[0],
                     QtWidgets.QStyleOptionGraphicsItem()] + list(args[2:])
-        super(BaseItem, self).paint(*new_args, **kwargs)
+        super().paint(*new_args, **kwargs)
 
     def itemChange(self, change, value):
         if change == QtWidgets.QGraphicsItem.ItemSelectedHasChanged:
@@ -89,7 +92,7 @@ class BaseItem(QtWidgets.QGraphicsRectItem):
                 self.parentItem().zValue() - 1
             )
 
-        return super(BaseItem, self).itemChange(change, value)
+        return super().itemChange(change, value)
 
     def _add_markers(self):
         trimmed_range = self.item.trimmed_range()
@@ -99,8 +102,7 @@ class BaseItem(QtWidgets.QGraphicsRectItem):
             if not trimmed_range.overlaps(marked_time):
                 continue
 
-            # @TODO: set the marker color if its set from the OTIO object
-            marker = Marker(m, None)
+            marker = Marker(m)
             marker.setY(0.5 * MARKER_SIZE)
             marker.setX(
                 (
@@ -185,10 +187,11 @@ class BaseItem(QtWidgets.QGraphicsRectItem):
         self.setToolTip(self.item.name)
 
     def counteract_zoom(self, zoom_level=1.0):
+        self.setX(self.x_value + self.current_x_offset * zoom_level)
         for label in (
-            self.source_name_label,
-            self.source_in_label,
-            self.source_out_label
+                self.source_name_label,
+                self.source_in_label,
+                self.source_out_label
         ):
             label.setTransform(QtGui.QTransform.fromScale(zoom_level, 1.0))
 
@@ -223,17 +226,100 @@ class BaseItem(QtWidgets.QGraphicsRectItem):
 class GapItem(BaseItem):
 
     def __init__(self, *args, **kwargs):
-        super(GapItem, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.setBrush(
             QtGui.QBrush(QtGui.QColor(100, 100, 100, 255))
         )
         self.source_name_label.setText('GAP')
 
 
+class TrackNameItem(BaseItem):
+
+    def __init__(self, track, rect, *args, **kwargs):
+        super().__init__(None, None, rect, *args, **kwargs)
+        self.track = track
+        self.track_name = 'Track' if not track.name else track.name
+        self.full_track_name = self.track_name
+        if len(self.track_name) > SHORT_NAME_LENGTH:
+            self.track_name = self.track_name[:SHORT_NAME_LENGTH] + '...'
+        self.source_name_label.setText(self.track_name + f'\n({track.kind})')
+        self.source_name_label.setY(
+            (TRACK_HEIGHT -
+             self.source_name_label.boundingRect().height()) / 2.0
+        )
+        self.setToolTip(f'{len(track)} items')
+        self.track_widget = None
+        self.name_toggle = False
+        self.font = self.source_name_label.font()
+        self.short_width = TRACK_NAME_WIDGET_WIDTH
+        font_metrics = QFontMetrics(self.font)
+        self.full_width = font_metrics.horizontalAdvance(self.full_track_name) + 40
+
+        if not self.track.enabled:
+            self.setBrush(
+                QtGui.QBrush(QtGui.QColor(100, 100, 100, 255))
+            )
+
+    def mouseDoubleClickEvent(self, event):
+        super().mouseDoubleClickEvent(event)
+        if self.name_toggle:
+            track_name_rect = QtCore.QRectF(
+                0,
+                0,
+                TRACK_NAME_WIDGET_WIDTH,
+                TRACK_HEIGHT
+            )
+            self.setRect(track_name_rect)
+            self.source_name_label.setText(
+                self.track_name + f'\n({self.track.kind})')
+            for widget in self.track_widget.widget_items:
+                widget.current_x_offset = self.short_width
+            self.name_toggle = False
+        else:
+            track_name_rect = QtCore.QRectF(
+                0,
+                0,
+                self.full_width,
+                TRACK_HEIGHT
+            )
+            self.setRect(track_name_rect)
+            self.source_name_label.setText(
+                self.full_track_name + f'\n({self.track.kind})')
+            for widget in self.track_widget.widget_items:
+                widget.current_x_offset = self.full_width
+            self.name_toggle = True
+
+        scene = self.scene()
+        if scene and hasattr(scene, "counteract_zoom"):
+            # If scene is CompositionWidget, trigger counteract zoom through
+            # it to also update the scene rect.
+            scene.counteract_zoom(CURRENT_ZOOM_LEVEL)
+        else:
+            for widget in self.track_widget.widget_items:
+                widget.counteract_zoom(CURRENT_ZOOM_LEVEL)
+
+    def itemChange(self, change, value):
+        return super(BaseItem, self).itemChange(change, value)
+
+    def _add_markers(self):
+        return
+
+    def _set_labels(self):
+        return
+
+    def _set_tooltip(self):
+        return
+
+    def counteract_zoom(self, zoom_level=1.0):
+        name_width = self.source_name_label.boundingRect().width()
+        self.source_name_label.setX(0.5 * (self.boundingRect().width() - name_width))
+        self.setTransform(QtGui.QTransform.fromScale(zoom_level, 1.0))
+
+
 class EffectItem(QtWidgets.QGraphicsRectItem):
 
     def __init__(self, item, rect, *args, **kwargs):
-        super(EffectItem, self).__init__(rect, *args, **kwargs)
+        super().__init__(rect, *args, **kwargs)
         self.item = item
         self.setFlags(QtWidgets.QGraphicsItem.ItemIsSelectable)
         self.init()
@@ -267,13 +353,13 @@ class EffectItem(QtWidgets.QGraphicsRectItem):
         for effect in self.item:
             name = effect.name if effect.name else ""
             effect_name = effect.effect_name if effect.effect_name else ""
-            tool_tips.append("{} {}".format(name, effect_name))
+            tool_tips.append(f"{name} {effect_name}")
         self.setToolTip("\n".join(tool_tips))
 
     def paint(self, *args, **kwargs):
         new_args = [args[0],
                     QtWidgets.QStyleOptionGraphicsItem()] + list(args[2:])
-        super(EffectItem, self).paint(*new_args, **kwargs)
+        super().paint(*new_args, **kwargs)
 
     def itemChange(self, change, value):
         if change == QtWidgets.QGraphicsItem.ItemSelectedHasChanged:
@@ -287,14 +373,14 @@ class EffectItem(QtWidgets.QGraphicsRectItem):
                 self.zValue() + 1 if self.isSelected() else self.zValue() - 1
             )
 
-        return super(EffectItem, self).itemChange(change, value)
+        return super().itemChange(change, value)
 
 
 class TransitionItem(BaseItem):
 
     def __init__(self, item, timeline_range, rect, *args, **kwargs):
         rect.setHeight(TRANSITION_HEIGHT)
-        super(TransitionItem, self).__init__(
+        super().__init__(
             item,
             timeline_range,
             rect,
@@ -332,15 +418,16 @@ class TransitionItem(BaseItem):
 class ClipItem(BaseItem):
 
     def __init__(self, *args, **kwargs):
-        super(ClipItem, self).__init__(*args, **kwargs)
-        self.setBrush(QtGui.QBrush(QtGui.QColor(168, 197, 255, 255)))
+        super().__init__(*args, **kwargs)
+        self.setBrush(QtGui.QBrush(QtGui.QColor(168, 197, 255, 255) if self.item.enabled
+                                   else QtGui.QColor(100, 100, 100, 255)))
         self.source_name_label.setText(self.item.name)
 
 
 class NestedItem(BaseItem):
 
     def __init__(self, *args, **kwargs):
-        super(NestedItem, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.setBrush(
             QtGui.QBrush(QtGui.QColor(255, 113, 91, 255))
         )
@@ -348,11 +435,11 @@ class NestedItem(BaseItem):
         self.source_name_label.setText(self.item.name)
 
     def mouseDoubleClickEvent(self, event):
-        super(NestedItem, self).mouseDoubleClickEvent(event)
+        super().mouseDoubleClickEvent(event)
         self.scene().views()[0].open_stack.emit(self.item)
 
     def keyPressEvent(self, key_event):
-        super(NestedItem, self).keyPressEvent(key_event)
+        super().keyPressEvent(key_event)
         key = key_event.key()
 
         if key == QtCore.Qt.Key_Return:
@@ -362,14 +449,26 @@ class NestedItem(BaseItem):
 class Track(QtWidgets.QGraphicsRectItem):
 
     def __init__(self, track, *args, **kwargs):
-        super(Track, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.track = track
-
+        self.widget_items = []
+        self.track_name_item = None
         self.setBrush(QtGui.QBrush(QtGui.QColor(43, 52, 59, 255)))
         self._populate()
 
     def _populate(self):
         track_map = self.track.range_of_all_children()
+        track_name_rect = QtCore.QRectF(
+            0,
+            0,
+            TRACK_NAME_WIDGET_WIDTH,
+            TRACK_HEIGHT
+        )
+        self.track_name_item = TrackNameItem(self.track, track_name_rect)
+        self.track_name_item.setParentItem(self)
+        self.track_name_item.setX(0)
+        self.track_name_item.counteract_zoom()
+        self.track_name_item.track_widget = self
         for n, item in enumerate(self.track):
             timeline_range = track_map[item]
 
@@ -380,6 +479,9 @@ class Track(QtWidgets.QGraphicsRectItem):
                 TIME_MULTIPLIER,
                 TRACK_HEIGHT
             )
+
+            if not self.track.enabled:
+                item.enabled = False
 
             if isinstance(item, otio.schema.Clip):
                 new_item = ClipItem(item, timeline_range, rect)
@@ -392,15 +494,18 @@ class Track(QtWidgets.QGraphicsRectItem):
             elif isinstance(item, otio.schema.Transition):
                 new_item = TransitionItem(item, timeline_range, rect)
             else:
-                print("Warning: could not add item {} to UI.".format(item))
+                print(f"Warning: could not add item {item} to UI.")
                 continue
 
             new_item.setParentItem(self)
+            new_item.x_value = otio.opentime.to_seconds(
+                timeline_range.start_time) * TIME_MULTIPLIER
             new_item.setX(
                 otio.opentime.to_seconds(timeline_range.start_time) *
                 TIME_MULTIPLIER
             )
             new_item.counteract_zoom()
+            self.widget_items.append(new_item)
 
 
 class Marker(QtWidgets.QGraphicsPolygonItem):
@@ -414,17 +519,19 @@ class Marker(QtWidgets.QGraphicsPolygonItem):
         poly.append(QtCore.QPointF(0, MARKER_SIZE))
         poly.append(QtCore.QPointF(-0.5 * MARKER_SIZE, 0.5 * MARKER_SIZE))
         poly.append(QtCore.QPointF(-0.5 * MARKER_SIZE, -0.5 * MARKER_SIZE))
-        super(Marker, self).__init__(poly, *args, **kwargs)
+        super().__init__(poly, *args, **kwargs)
 
         self.setFlags(QtWidgets.QGraphicsItem.ItemIsSelectable)
+        color = MARKER_COLORS.get(marker.color, (121, 212, 177, 255))
+
         self.setBrush(
-            QtGui.QBrush(QtGui.QColor(121, 212, 177, 255))
+            QtGui.QBrush(QtGui.QColor(*color))
         )
 
     def paint(self, *args, **kwargs):
         new_args = [args[0],
                     QtWidgets.QStyleOptionGraphicsItem()] + list(args[2:])
-        super(Marker, self).paint(*new_args, **kwargs)
+        super().paint(*new_args, **kwargs)
 
     def itemChange(self, change, value):
         if change == QtWidgets.QGraphicsItem.ItemSelectedHasChanged:
@@ -432,7 +539,7 @@ class Marker(QtWidgets.QGraphicsPolygonItem):
                 QtGui.QColor(0, 255, 0, 255) if self.isSelected()
                 else QtGui.QColor(0, 0, 0, 255)
             )
-        return super(Marker, self).itemChange(change, value)
+        return super().itemChange(change, value)
 
     def counteract_zoom(self, zoom_level=1.0):
         self.setTransform(QtGui.QTransform.fromScale(zoom_level, 1.0))
@@ -441,7 +548,7 @@ class Marker(QtWidgets.QGraphicsPolygonItem):
 class TimeSlider(QtWidgets.QGraphicsRectItem):
 
     def __init__(self, *args, **kwargs):
-        super(TimeSlider, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.setBrush(QtGui.QBrush(QtGui.QColor(64, 78, 87, 255)))
         pen = QtGui.QPen()
         pen.setWidth(0)
@@ -450,12 +557,16 @@ class TimeSlider(QtWidgets.QGraphicsRectItem):
 
     def mousePressEvent(self, mouse_event):
         pos = self.mapToScene(mouse_event.pos())
-        self._ruler.setPos(QtCore.QPointF(pos.x(),
-                                          TIME_SLIDER_HEIGHT -
-                                          MARKER_SIZE))
+        self._ruler.setPos(QtCore.QPointF(
+            max(pos.x() - TRACK_NAME_WIDGET_WIDTH * CURRENT_ZOOM_LEVEL, 0),
+            TIME_SLIDER_HEIGHT -
+            MARKER_SIZE))
         self._ruler.update_frame()
 
-        super(TimeSlider, self).mousePressEvent(mouse_event)
+        super().mousePressEvent(mouse_event)
 
     def add_ruler(self, ruler):
         self._ruler = ruler
+
+    def counteract_zoom(self, zoom_level=1.0):
+        self.setX(zoom_level * TRACK_NAME_WIDGET_WIDTH)

@@ -1,53 +1,40 @@
 #!/usr/bin/env python
 #
-# Copyright 2017 Pixar Animation Studios
-#
-# Licensed under the Apache License, Version 2.0 (the "Apache License")
-# with the following modification; you may not use this file except in
-# compliance with the Apache License and the following modification to it:
-# Section 6. Trademarks. is deleted and replaced with:
-#
-# 6. Trademarks. This License does not grant permission to use the trade
-#    names, trademarks, service marks, or product names of the Licensor
-#    and its affiliates, except as required to comply with Section 4(c) of
-#    the License and to reproduce the content of the NOTICE file.
-#
-# You may obtain a copy of the Apache License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the Apache License with the above modification is
-# distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-# KIND, either express or implied. See the Apache License for the specific
-# language governing permissions and limitations under the Apache License.
-#
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Contributors to the OpenTimelineIO project
 
 """Test the CMX 3600 EDL adapter."""
 
 # python
 import os
-import tempfile
 import unittest
 
 import opentimelineio as otio
 import opentimelineio.test_utils as otio_test_utils
 from opentimelineio.adapters import cmx_3600
 
+from tempfile import TemporaryDirectory  # noqa: F401
+import tempfile
+
 SAMPLE_DATA_DIR = os.path.join(os.path.dirname(__file__), "sample_data")
 SCREENING_EXAMPLE_PATH = os.path.join(SAMPLE_DATA_DIR, "screening_example.edl")
+AVID_EXAMPLE_PATH = os.path.join(SAMPLE_DATA_DIR, "avid_example.edl")
 NUCODA_EXAMPLE_PATH = os.path.join(SAMPLE_DATA_DIR, "nucoda_example.edl")
+PREMIERE_EXAMPLE_PATH = os.path.join(SAMPLE_DATA_DIR, "premiere_example.edl")
 EXEMPLE_25_FPS_PATH = os.path.join(SAMPLE_DATA_DIR, "25fps.edl")
 NO_SPACES_PATH = os.path.join(SAMPLE_DATA_DIR, "no_spaces_test.edl")
 DISSOLVE_TEST = os.path.join(SAMPLE_DATA_DIR, "dissolve_test.edl")
 DISSOLVE_TEST_2 = os.path.join(SAMPLE_DATA_DIR, "dissolve_test_2.edl")
+DISSOLVE_TEST_3 = os.path.join(SAMPLE_DATA_DIR, "dissolve_test_3.edl")
+DISSOLVE_TEST_4 = os.path.join(SAMPLE_DATA_DIR, "dissolve_test_4.edl")
 GAP_TEST = os.path.join(SAMPLE_DATA_DIR, "gap_test.edl")
+WIPE_TEST = os.path.join(SAMPLE_DATA_DIR, "wipe_test.edl")
 TIMECODE_MISMATCH_TEST = os.path.join(SAMPLE_DATA_DIR, "timecode_mismatch.edl")
 SPEED_EFFECTS_TEST = os.path.join(SAMPLE_DATA_DIR, "speed_effects.edl")
-SPEED_EFFECTS_TEST_SMALL = os.path.join(
-    SAMPLE_DATA_DIR,
-    "speed_effects_small.edl"
-)
+SPEED_EFFECTS_TEST_SMALL = os.path.join(SAMPLE_DATA_DIR, "speed_effects_small.edl")
+MULTIPLE_TARGET_AUDIO_PATH = os.path.join(SAMPLE_DATA_DIR, "multi_audio.edl")
+TRANSITION_DURATION_TEST = os.path.join(SAMPLE_DATA_DIR, "transition_duration.edl")
+ENABLED_TEST = os.path.join(SAMPLE_DATA_DIR, "enabled.otio")
 
 
 class EDLAdapterTest(unittest.TestCase, otio_test_utils.OTIOAssertions):
@@ -93,7 +80,7 @@ class EDLAdapterTest(unittest.TestCase, otio_test_utils.OTIOAssertions):
             otio.opentime.from_timecode("00:00:04:19", fps)
         )
 
-        self.assertEqual(len(timeline.tracks[0][3].markers), 1)
+        self.assertEqual(len(timeline.tracks[0][3].markers), 2)
         marker = timeline.tracks[0][3].markers[0]
         self.assertEqual(marker.name, "ANIM FIX NEEDED")
         self.assertEqual(marker.metadata.get("cmx_3600").get("color"), "RED")
@@ -199,7 +186,7 @@ V     C        00:00:00:00 00:00:00:05 00:00:00:00 00:00:00:05
 
         self.assertMultiLineEqual(result, expected)
 
-        # Keep full filename (minus extension) as reelname
+        # Make sure reel name is only 12 characters long
         result = otio.adapters.write_to_string(
             tl,
             adapter_name="cmx_3600",
@@ -307,51 +294,59 @@ V     C        00:00:00:00 00:00:00:05 00:00:00:00 00:00:00:05
         test_edl = SPEED_EFFECTS_TEST_SMALL
         timeline = otio.adapters.read_from_file(test_edl)
 
-        tmp_path = tempfile.mkstemp(suffix=".edl", text=True)[1]
+        with tempfile.TemporaryDirectory() as temp_dir:
+            tmp_path = os.path.join(
+                temp_dir,
+                "test_edl_round_trip_disk2mem2disk_speed_effects.edl"
+            )
 
-        otio.adapters.write_to_file(timeline, tmp_path)
+            otio.adapters.write_to_file(timeline, tmp_path)
 
-        result = otio.adapters.read_from_file(tmp_path)
+            result = otio.adapters.read_from_file(tmp_path)
 
-        # When debugging, you can use this to see the difference in the OTIO
-        # otio.adapters.otio_json.write_to_file(timeline, "/tmp/original.otio")
-        # otio.adapters.otio_json.write_to_file(result, "/tmp/output.otio")
-        # os.system("xxdiff /tmp/{original,output}.otio")
+            # When debugging, you can use this to see the difference in the OTIO
+            # otio.adapters.otio_json.write_to_file(timeline, "/tmp/original.otio")
+            # otio.adapters.otio_json.write_to_file(result, "/tmp/output.otio")
+            # os.system("xxdiff /tmp/{original,output}.otio")
 
-        # When debugging, use this to see the difference in the EDLs on disk
-        # os.system("xxdiff {} {}&".format(test_edl, tmp_path))
+            # When debugging, use this to see the difference in the EDLs on disk
+            # os.system("xxdiff {} {}&".format(test_edl, tmp_path))
 
-        # The in-memory OTIO representation should be the same
-        self.assertJsonEqual(timeline, result)
+            # The in-memory OTIO representation should be the same
+            self.assertJsonEqual(timeline, result)
 
     def test_edl_round_trip_disk2mem2disk(self):
         timeline = otio.adapters.read_from_file(SCREENING_EXAMPLE_PATH)
 
-        tmp_path = tempfile.mkstemp(suffix=".edl", text=True)[1]
+        with tempfile.TemporaryDirectory() as temp_dir:
+            tmp_path = os.path.join(
+                temp_dir,
+                "test_edl_round_trip_disk2mem2disk.edl"
+            )
 
-        otio.adapters.write_to_file(timeline, tmp_path)
+            otio.adapters.write_to_file(timeline, tmp_path)
 
-        result = otio.adapters.read_from_file(tmp_path)
+            result = otio.adapters.read_from_file(tmp_path)
 
-        # When debugging, you can use this to see the difference in the OTIO
-        # otio.adapters.otio_json.write_to_file(timeline, "/tmp/original.otio")
-        # otio.adapters.otio_json.write_to_file(result, "/tmp/output.otio")
-        # os.system("opendiff /tmp/{original,output}.otio")
+            # When debugging, you can use this to see the difference in the OTIO
+            # otio.adapters.otio_json.write_to_file(timeline, "/tmp/original.otio")
+            # otio.adapters.otio_json.write_to_file(result, "/tmp/output.otio")
+            # os.system("opendiff /tmp/{original,output}.otio")
 
-        original_json = otio.adapters.otio_json.write_to_string(timeline)
-        output_json = otio.adapters.otio_json.write_to_string(result)
-        self.assertMultiLineEqual(original_json, output_json)
+            original_json = otio.adapters.otio_json.write_to_string(timeline)
+            output_json = otio.adapters.otio_json.write_to_string(result)
+            self.assertMultiLineEqual(original_json, output_json)
 
-        # The in-memory OTIO representation should be the same
-        self.assertIsOTIOEquivalentTo(timeline, result)
+            # The in-memory OTIO representation should be the same
+            self.assertIsOTIOEquivalentTo(timeline, result)
 
-        # When debugging, use this to see the difference in the EDLs on disk
-        # os.system("opendiff {} {}".format(SCREENING_EXAMPLE_PATH, tmp_path))
+            # When debugging, use this to see the difference in the EDLs on disk
+            # os.system("opendiff {} {}".format(SCREENING_EXAMPLE_PATH, tmp_path))
 
-        # But the EDL text on disk are *not* byte-for-byte identical
-        with open(SCREENING_EXAMPLE_PATH, "r") as original_file:
-            with open(tmp_path, "r") as output_file:
-                self.assertNotEqual(original_file.read(), output_file.read())
+            # But the EDL text on disk are *not* byte-for-byte identical
+            with open(SCREENING_EXAMPLE_PATH) as original_file:
+                with open(tmp_path) as output_file:
+                    self.assertNotEqual(original_file.read(), output_file.read())
 
     def test_regex_flexibility(self):
         timeline = otio.adapters.read_from_file(SCREENING_EXAMPLE_PATH)
@@ -379,25 +374,187 @@ V     C        00:00:00:00 00:00:00:05 00:00:00:00 00:00:00:05
             31
         )
 
+    def test_imagesequence_read(self):
+        trunced_edl1 = '''TITLE: Image Sequence Write
+
+001  myimages V     C        01:00:01:00 01:00:02:12 00:00:00:00 00:00:01:12
+* FROM CLIP NAME:  my_image_sequence
+* FROM CLIP: /media/path/my_image_sequence.[1025-1060].ext
+* OTIO TRUNCATED REEL NAME FROM: my_image_sequence.[1025-1060].ext
+'''
+        rate = 24
+        tl1 = otio.adapters.read_from_string(trunced_edl1, 'cmx_3600', rate=rate)
+        self.assertIsInstance(tl1, otio.schema.Timeline)
+
+        clip1 = tl1.tracks[0][0]
+        media_ref1 = clip1.media_reference
+        self.assertIsInstance(media_ref1, otio.schema.ImageSequenceReference)
+        self.assertEqual(media_ref1.start_frame, 1025)
+        self.assertEqual(media_ref1.end_frame(), 1060)
+        self.assertEqual(
+            clip1.available_range(),
+            otio.opentime.range_from_start_end_time(
+                otio.opentime.from_timecode('01:00:01:00', rate),
+                otio.opentime.from_timecode('01:00:02:12', rate)
+            )
+        )
+
+        # Make sure regex works and uses ExternalReference for non sequences
+        trunced_edl2 = '''TITLE: Image Sequence Write
+
+001  myimages V     C        01:00:01:00 01:00:02:12 00:00:00:00 00:00:01:12
+* FROM CLIP NAME:  my_image_sequence
+* FROM CLIP: /media/path/my_image_file.1025.ext
+* OTIO TRUNCATED REEL NAME FROM: my_image_file.1025.ext
+'''
+
+        tl2 = otio.adapters.read_from_string(trunced_edl2, 'cmx_3600', rate=rate)
+        clip2 = tl2.tracks[0][0]
+        media_ref2 = clip2.media_reference
+        self.assertIsInstance(media_ref2, otio.schema.ExternalReference)
+
+        trunced_edl3 = '''TITLE: Image Sequence Write
+
+001  myimages V     C        01:00:01:00 01:00:02:12 00:00:00:00 00:00:01:12
+* FROM CLIP NAME:  my_image_sequence
+* FROM CLIP: /media/path/my_image_file.[1025].ext
+* OTIO TRUNCATED REEL NAME FROM: my_image_file.[1025].ext
+'''
+        tl3 = otio.adapters.read_from_string(trunced_edl3, 'cmx_3600', rate=rate)
+        clip3 = tl3.tracks[0][0]
+        media_ref3 = clip3.media_reference
+        self.assertIsInstance(media_ref3, otio.schema.ExternalReference)
+
+    def test_imagesequence_write(self):
+        rate = 24
+        tl = otio.schema.Timeline('Image Sequence Write')
+        track = otio.schema.Track('V1')
+        tl.tracks.append(track)
+
+        clip = otio.schema.Clip(
+            name='my_image_sequence',
+            source_range=otio.opentime.range_from_start_end_time(
+                otio.opentime.from_timecode('01:00:01:00', rate),
+                otio.opentime.from_timecode('01:00:02:12', rate)
+            ),
+            media_reference=otio.schema.ImageSequenceReference(
+                target_url_base='/media/path/',
+                name_prefix='my_image_sequence.',
+                name_suffix='.ext',
+                rate=rate,
+                start_frame=1001,
+                frame_zero_padding=4,
+                available_range=otio.opentime.range_from_start_end_time(
+                    otio.opentime.from_timecode('01:00:00:00', rate),
+                    otio.opentime.from_timecode('01:00:03:00', rate)
+                )
+            )
+        )
+        track.append(clip)
+
+        # Default behavior
+        result1 = otio.adapters.write_to_string(tl, 'cmx_3600', rate=rate)
+
+        expected_result1 = '''TITLE: Image Sequence Write
+
+001  myimages V     C        01:00:01:00 01:00:02:12 00:00:00:00 00:00:01:12
+* FROM CLIP NAME:  my_image_sequence
+* FROM CLIP: /media/path/my_image_sequence.[1025-1060].ext
+* OTIO TRUNCATED REEL NAME FROM: my_image_sequence.[1025-1060].ext
+'''
+        self.assertMultiLineEqual(result1, expected_result1)
+
+        # Only trunc extension in reel name
+        result2 = otio.adapters.write_to_string(
+            tl,
+            'cmx_3600',
+            rate=24,
+            reelname_len=None
+        )
+
+        expected_result2 = '''TITLE: Image Sequence Write
+
+001  my_image_sequence.[1025-1060] V     C        \
+01:00:01:00 01:00:02:12 00:00:00:00 00:00:01:12
+* FROM CLIP NAME:  my_image_sequence
+* FROM CLIP: /media/path/my_image_sequence.[1025-1060].ext
+'''
+        self.assertMultiLineEqual(result2, expected_result2)
+
     def test_dissolve_parse(self):
         tl = otio.adapters.read_from_file(DISSOLVE_TEST)
-        self.assertEqual(len(tl.tracks[0]), 3)
+        # clip/transition/clip/clip
+        self.assertEqual(len(tl.tracks[0]), 4)
 
         self.assertTrue(isinstance(tl.tracks[0][1], otio.schema.Transition))
-
-        self.assertEqual(tl.tracks[0][0].duration().value, 14)
-        self.assertEqual(tl.tracks[0][2].duration().value, 6)
+        self.assertEqual(tl.tracks[0][0].duration().value, 9)
+        # The visible range must contains all the frames needed for the transition
+        # Edit duration + transition duration
+        self.assertEqual(tl.tracks[0][0].visible_range().duration.to_frames(), 19)
+        self.assertEqual(tl.tracks[0][0].name, "clip_A")
+        self.assertEqual(tl.tracks[0][1].duration().value, 10)
+        self.assertEqual(tl.tracks[0][1].name, "SMPTE_Dissolve from clip_A to clip_B")
+        self.assertEqual(tl.tracks[0][2].duration().value, 10)
+        self.assertEqual(tl.tracks[0][2].visible_range().duration.value, 10)
+        self.assertEqual(tl.tracks[0][2].name, "clip_B")
+        self.assertEqual(tl.tracks[0][3].duration().value, 1)
+        self.assertEqual(tl.tracks[0][2].name, "clip_B")
 
     def test_dissolve_parse_middle(self):
         tl = otio.adapters.read_from_file(DISSOLVE_TEST_2)
-        self.assertEqual(len(tl.tracks[0]), 3)
+        trck = tl.tracks[0]
+        # 3 clips and 1 transition
+        self.assertEqual(len(trck), 4)
+
+        self.assertTrue(isinstance(trck[1], otio.schema.Transition))
+
+        self.assertEqual(trck[0].duration().value, 5)
+        self.assertEqual(trck[0].visible_range().duration.to_frames(), 15)
+        self.assertEqual(trck[1].duration().value, 10)
+        self.assertEqual(trck[1].name, "SMPTE_Dissolve from clip_A to clip_B")
+
+        self.assertEqual(
+            trck[2].source_range.start_time.value,
+            otio.opentime.from_timecode('01:00:08:04', 24).value
+        )
+        self.assertEqual(trck[2].name, "clip_B")
+        self.assertEqual(trck[2].duration().value, 10)
+        self.assertEqual(trck[2].visible_range().duration.value, 10)
+
+        self.assertEqual(tl.tracks[0][0].visible_range().duration.to_frames(), 15)
+
+    def test_dissolve_parse_full_clip_dissolve(self):
+        tl = otio.adapters.read_from_file(DISSOLVE_TEST_3)
+        self.assertEqual(len(tl.tracks[0]), 4)
 
         self.assertTrue(isinstance(tl.tracks[0][1], otio.schema.Transition))
 
         trck = tl.tracks[0]
-        self.assertEqual(trck[0].duration().value, 10)
-        self.assertEqual(trck[2].source_range.start_time.value, 86400 + 201)
-        self.assertEqual(trck[2].duration().value, 10)
+        clip_a = trck[0]
+        self.assertEqual(clip_a.name, "Clip_A.mov")
+        self.assertEqual(clip_a.duration().value, 61)
+        self.assertEqual(clip_a.visible_range().duration.value, 61 + 30)
+
+        transition = trck[1]
+        # Note: clip names in the EDL are wrong, the transition is actually
+        # from Clip_A to Clip_B
+        self.assertEqual(
+            transition.name,
+            "SMPTE_Dissolve from Clip_B.mov to Clip_C.mov"
+        )
+        self.assertEqual(transition.in_offset.value, 0)
+        self.assertEqual(transition.out_offset.value, 30)
+
+        clip_c = trck[2]
+        self.assertEqual(clip_c.name, "Clip_C.mov")
+        self.assertEqual(clip_c.source_range.start_time.value, 86400 + (33 * 24 + 22))
+        self.assertEqual(clip_c.duration().value, 30)
+        self.assertEqual(clip_c.visible_range().duration.value, 30)
+
+        clip_d = trck[3]
+        self.assertEqual(clip_d.name, "Clip_D.mov")
+        self.assertEqual(clip_d.source_range.start_time.value, 86400)
+        self.assertEqual(clip_d.duration().value, 46)
 
     def test_dissolve_with_odd_frame_count_maintains_length(self):
         # EXERCISE
@@ -412,7 +569,24 @@ V     C        00:00:00:00 00:00:00:05 00:00:00:00 00:00:00:05
         # VALIDATE
         self.assertEqual(tl.duration().value, (11 * 24) + 12)
 
-    def test_fade_to_black_ends_with_gap(self):
+    def test_wipe_parse(self):
+        tl = otio.adapters.read_from_file(WIPE_TEST)
+        self.assertEqual(len(tl.tracks[0]), 4)
+
+        wipe = tl.tracks[0][1]
+        self.assertTrue(isinstance(wipe, otio.schema.Transition))
+        self.assertEqual(wipe.transition_type, "SMPTE_Wipe")
+        self.assertEqual(wipe.metadata["cmx_3600"]["transition"], "W001")
+
+        self.assertEqual(tl.tracks[0][0].duration().value, 9)
+        self.assertEqual(tl.tracks[0][0].visible_range().duration.value, 19)
+
+        self.assertEqual(tl.tracks[0][2].duration().value, 10)
+        self.assertEqual(tl.tracks[0][2].visible_range().duration.value, 10)
+
+        self.assertEqual(tl.tracks[0][3].duration().value, 1)
+
+    def test_fade_to_black(self):
         # EXERCISE
         tl = otio.adapters.read_from_string(
             '1 CLPA V C     00:00:03:18 00:00:12:15 00:00:00:00 00:00:08:21\n'
@@ -424,9 +598,44 @@ V     C        00:00:00:00 00:00:00:05 00:00:00:00 00:00:00:05
         # VALIDATE
         self.assertEqual(len(tl.tracks[0]), 3)
         self.assertTrue(isinstance(tl.tracks[0][1], otio.schema.Transition))
-        self.assertTrue(isinstance(tl.tracks[0][2], otio.schema.Gap))
-        self.assertEqual(tl.tracks[0][2].duration().value, 12)
+        self.assertTrue(isinstance(tl.tracks[0][2], otio.schema.Clip))
+        self.assertEqual(tl.tracks[0][2].media_reference.generator_kind, 'black')
+        self.assertEqual(tl.tracks[0][2].duration().value, 24)
         self.assertEqual(tl.tracks[0][2].source_range.start_time.value, 0)
+
+    def test_edl_round_trip_with_transitions(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # Notes:
+            # - the writer does not handle wipes, only dissolves
+            # - the writer can generate invalid EDLs if spaces are in reel names.
+            for edl_file in [
+                DISSOLVE_TEST,
+                DISSOLVE_TEST_2,
+                DISSOLVE_TEST_3,
+                DISSOLVE_TEST_4
+            ]:
+                edl_name = os.path.basename(edl_file)
+                timeline = otio.adapters.read_from_file(edl_file)
+                tmp_path = os.path.join(
+                    temp_dir,
+                    f'test_edl_round_trip_{edl_name}'
+                )
+                otio.adapters.write_to_file(timeline, tmp_path)
+
+                result = otio.adapters.read_from_file(tmp_path)
+                self.assertEqual(len(timeline.tracks), len(result.tracks))
+                for track, res_track in zip(timeline.tracks, result.tracks):
+                    self.assertEqual(len(track), len(res_track))
+                    for child, res_child in zip(track, res_track):
+                        self.assertEqual(type(child), type(res_child))
+                        if isinstance(child, otio.schema.Transition):
+                            self.assertEqual(child.in_offset, res_child.in_offset)
+                            self.assertEqual(child.out_offset, res_child.out_offset)
+                            self.assertEqual(
+                                child.transition_type, res_child.transition_type
+                            )
+                        else:
+                            self.assertEqual(child.source_range, res_child.source_range)
 
     def test_edl_25fps(self):
         # EXERCISE
@@ -484,8 +693,8 @@ V     C        00:00:00:00 00:00:00:05 00:00:00:00 00:00:00:05
         # EXERCISE
         tl = otio.adapters.read_from_string(
             '1 BL V C 00:00:00:00 00:00:01:00 00:00:00:00 00:00:01:00\n'
-            '1 BLACK V C 00:00:00:00 00:00:01:00 00:00:01:00 00:00:02:00\n'
-            '1 BARS V C 00:00:00:00 00:00:01:00 00:00:02:00 00:00:03:00\n',
+            '2 BLACK V C 00:00:00:00 00:00:01:00 00:00:01:00 00:00:02:00\n'
+            '3 BARS V C 00:00:00:00 00:00:01:00 00:00:02:00 00:00:03:00\n',
             adapter_name="cmx_3600"
         )
 
@@ -503,47 +712,79 @@ V     C        00:00:00:00 00:00:00:05 00:00:00:00 00:00:00:05
             'SMPTEBars'
         )
 
-    def test_nucoda_edl_read(self):
-        edl_path = NUCODA_EXAMPLE_PATH
-        fps = 24
-        timeline = otio.adapters.read_from_file(edl_path)
-        self.assertTrue(timeline is not None)
-        self.assertEqual(len(timeline.tracks), 1)
-        self.assertEqual(len(timeline.tracks[0]), 2)
-        self.assertEqual(
-            timeline.tracks[0][0].name,
-            "take_1"
-        )
-        self.assertEqual(
-            timeline.tracks[0][0].source_range.duration,
-            otio.opentime.from_timecode("00:00:01:07", fps)
-        )
-        self.assertIsOTIOEquivalentTo(
-            timeline.tracks[0][0].media_reference,
-            otio.schema.ExternalReference(
-                target_url=r"S:\path\to\ZZ100_501.take_1.0001.exr"
-            )
-        )
-        self.assertEqual(
-            timeline.tracks[0][1].name,
-            "take_2"
-        )
-        self.assertEqual(
-            timeline.tracks[0][1].source_range.duration,
-            otio.opentime.from_timecode("00:00:02:02", fps)
-        )
-        self.assertIsOTIOEquivalentTo(
-            timeline.tracks[0][1].media_reference,
-            otio.schema.ExternalReference(
-                target_url=r"S:\path\to\ZZ100_502A.take_2.0101.exr"
-            )
-        )
+    def test_style_edl_read(self):
+        edl_paths = [AVID_EXAMPLE_PATH, NUCODA_EXAMPLE_PATH, PREMIERE_EXAMPLE_PATH]
+        for edl_path in edl_paths:
+            fps = 24
+            timeline = otio.adapters.read_from_file(edl_path)
+            self.assertTrue(timeline is not None)
+            self.assertEqual(len(timeline.tracks), 1)
+            self.assertEqual(len(timeline.tracks[0]), 2)
 
-    def test_nucoda_edl_write(self):
+            # If cannot assertEqual fails with clip name
+            # Attempt to assertEqual with
+            try:
+                self.assertEqual(
+                    timeline.tracks[0][0].name,
+                    "take_1"
+                )
+            except AssertionError:
+                self.assertEqual(
+                    timeline.tracks[0][0].name,
+                    "ZZ100_501.take_1.0001.exr"
+                )
+            self.assertEqual(
+                timeline.tracks[0][0].source_range.duration,
+                otio.opentime.from_timecode("00:00:01:07", fps)
+            )
+
+            try:
+                self.assertIsOTIOEquivalentTo(
+                    timeline.tracks[0][0].media_reference,
+                    otio.schema.ExternalReference(
+                        target_url=r"S:\path\to\ZZ100_501.take_1.0001.exr"
+                    )
+                )
+            except AssertionError:
+                self.assertIsOTIOEquivalentTo(
+                    timeline.tracks[0][0].media_reference,
+                    otio.schema.MissingReference()
+                )
+
+            try:
+                self.assertEqual(
+                    timeline.tracks[0][1].name,
+                    "take_2"
+                )
+            except AssertionError:
+                self.assertEqual(
+                    timeline.tracks[0][1].name,
+                    "ZZ100_502A.take_2.0101.exr"
+                )
+
+            self.assertEqual(
+                timeline.tracks[0][1].source_range.duration,
+                otio.opentime.from_timecode("00:00:02:02", fps)
+            )
+
+            try:
+                self.assertIsOTIOEquivalentTo(
+                    timeline.tracks[0][1].media_reference,
+                    otio.schema.ExternalReference(
+                        target_url=r"S:\path\to\ZZ100_502A.take_2.0101.exr"
+                    )
+                )
+            except AssertionError:
+                self.assertIsOTIOEquivalentTo(
+                    timeline.tracks[0][1].media_reference,
+                    otio.schema.MissingReference()
+                )
+
+    def test_style_edl_write(self):
         track = otio.schema.Track()
-        tl = otio.schema.Timeline("test_nucoda_timeline", tracks=[track])
+        tl = otio.schema.Timeline("temp", tracks=[track])
         rt = otio.opentime.RationalTime(5.0, 24.0)
-        mr = otio.schema.ExternalReference(target_url=r"S:\var\tmp\test.exr")
+        mr = otio.schema.ExternalReference(target_url=r"S:/var/tmp/test.exr")
 
         tr = otio.opentime.TimeRange(
             start_time=otio.opentime.RationalTime(0.0, 24.0),
@@ -570,6 +811,7 @@ V     C        00:00:00:00 00:00:00:05 00:00:00:00 00:00:00:05
         tl.tracks[0].append(gap)
         tl.tracks[0].append(cl2)
 
+        tl.name = 'test_nucoda_timeline'
         result = otio.adapters.write_to_string(
             tl,
             adapter_name='cmx_3600',
@@ -580,11 +822,53 @@ V     C        00:00:00:00 00:00:00:05 00:00:00:00 00:00:00:05
 
 001  test     V     C        00:00:00:00 00:00:00:05 00:00:00:00 00:00:00:05
 * FROM CLIP NAME:  test clip1
-* FROM FILE: S:\var\tmp\test.exr
+* FROM FILE: S:/var/tmp/test.exr
 * OTIO TRUNCATED REEL NAME FROM: test.exr
 002  test     V     C        00:00:00:00 00:00:00:05 00:00:01:05 00:00:01:10
 * FROM CLIP NAME:  test clip2
-* FROM FILE: S:\var\tmp\test.exr
+* FROM FILE: S:/var/tmp/test.exr
+* OTIO TRUNCATED REEL NAME FROM: test.exr
+'''
+
+        self.assertMultiLineEqual(result, expected)
+
+        tl.name = 'test_avid_timeline'
+        result = otio.adapters.write_to_string(
+            tl,
+            adapter_name='cmx_3600',
+            style='avid'
+        )
+
+        expected = r'''TITLE: test_avid_timeline
+
+001  test     V     C        00:00:00:00 00:00:00:05 00:00:00:00 00:00:00:05
+* FROM CLIP NAME:  test clip1
+* FROM CLIP: S:/var/tmp/test.exr
+* OTIO TRUNCATED REEL NAME FROM: test.exr
+002  test     V     C        00:00:00:00 00:00:00:05 00:00:01:05 00:00:01:10
+* FROM CLIP NAME:  test clip2
+* FROM CLIP: S:/var/tmp/test.exr
+* OTIO TRUNCATED REEL NAME FROM: test.exr
+'''
+
+        self.assertMultiLineEqual(result, expected)
+
+        tl.name = 'test_premiere_timeline'
+        result = otio.adapters.write_to_string(
+            tl,
+            adapter_name='cmx_3600',
+            style='premiere'
+        )
+
+        expected = r'''TITLE: test_premiere_timeline
+
+001  AX       V     C        00:00:00:00 00:00:00:05 00:00:00:00 00:00:00:05
+* FROM CLIP NAME:  test.exr
+* OTIO REFERENCE FROM: S:/var/tmp/test.exr
+* OTIO TRUNCATED REEL NAME FROM: test.exr
+002  AX       V     C        00:00:00:00 00:00:00:05 00:00:01:05 00:00:01:10
+* FROM CLIP NAME:  test.exr
+* OTIO REFERENCE FROM: S:/var/tmp/test.exr
 * OTIO TRUNCATED REEL NAME FROM: test.exr
 '''
 
@@ -596,10 +880,10 @@ V     C        00:00:00:00 00:00:00:05 00:00:00:00 00:00:00:05
 
 001  ZZ100_50 V     C        01:00:04:05 01:00:05:12 00:59:53:11 00:59:54:18
 * FROM CLIP NAME:  take_1
-* FROM FILE: S:\path\to\ZZ100_501.take_1.0001.exr
+* FROM FILE: S:/path/to/ZZ100_501.take_1.0001.exr
 002  ZZ100_50 V     C        01:00:06:13 01:00:08:15 00:59:54:18 00:59:56:20
 * FROM CLIP NAME:  take_2
-* FROM FILE: S:\path\to\ZZ100_502A.take_2.0101.exr
+* FROM FILE: S:/path/to/ZZ100_502A.take_2.0101.exr
 '''
 
         timeline = otio.adapters.read_from_string(sample_data, adapter_name="cmx_3600")
@@ -812,6 +1096,24 @@ V     C        00:00:00:00 00:00:00:05 00:00:00:00 00:00:00:05
 
         self.assertMultiLineEqual(result, expected)
 
+    def test_read_edl_with_multiple_target_audio_tracks(self):
+        tl = otio.adapters.read_from_file(MULTIPLE_TARGET_AUDIO_PATH)
+
+        self.assertEqual(len(tl.audio_tracks()), 2)
+
+        first_track, second_track = tl.audio_tracks()
+        self.assertEqual(first_track.name, "A1")
+        self.assertEqual(second_track.name, "A2")
+
+        self.assertEqual(first_track[0].name, "AX")
+        self.assertEqual(second_track[0].name, "AX")
+
+        expected_range = otio.opentime.TimeRange(
+            duration=otio.opentime.from_timecode("00:56:55:22", rate=24)
+        )
+        self.assertEqual(first_track[0].source_range, expected_range)
+        self.assertEqual(second_track[0].source_range, expected_range)
+
     def test_custom_reel_names(self):
         track = otio.schema.Track()
         tl = otio.schema.Timeline(tracks=[track])
@@ -882,11 +1184,13 @@ V     C        00:00:00:00 00:00:00:05 00:00:00:00 00:00:00:05
 
         # VALIDATE
         self.assertEqual(tl.duration().value, 276)
-        self.assertEqual(len(tl.tracks[0]), 3)
-        self.assertEqual(tl.tracks[0][0].duration().value, 70)
-        self.assertEqual(tl.tracks[0][1].in_offset.value, 13)
-        self.assertEqual(tl.tracks[0][1].out_offset.value, 14)
-        self.assertEqual(tl.tracks[0][2].duration().value, 206)
+        self.assertEqual(len(tl.tracks[0]), 4)
+        self.assertEqual(tl.tracks[0][0].duration().value, 57)
+        self.assertEqual(tl.tracks[0][0].visible_range().duration.value, 57 + 27)
+        self.assertEqual(tl.tracks[0][1].in_offset.value, 0)
+        self.assertEqual(tl.tracks[0][1].out_offset.value, 27)
+        self.assertEqual(tl.tracks[0][2].duration().value, 27)
+        self.assertEqual(tl.tracks[0][3].duration().value, 276 - 84)
 
     def test_speed_effects(self):
         tl = otio.adapters.read_from_file(
@@ -957,6 +1261,69 @@ V     C        00:00:00:00 00:00:00:05 00:00:00:00 00:00:00:05
                 duration=otio.opentime.from_timecode("00:00:01:12", 24)
             )
         )
+
+    def test_transition_duration(self):
+        tl = otio.adapters.read_from_file(TRANSITION_DURATION_TEST)
+        self.assertEqual(len(tl.tracks[0]), 5)
+
+        self.assertIsInstance(tl.tracks[0][2], otio.schema.Transition)
+
+        self.assertEqual(tl.tracks[0][2].duration().value, 26.0)
+
+    def test_three_part_transition(self):
+        """
+        Test A->B->C Transition
+        """
+        tl = otio.adapters.read_from_file(DISSOLVE_TEST_4)
+        self.assertEqual(len(tl.tracks[0]), 8)
+
+        self.assertEqual(tl.tracks[0][0].duration().value, 30.0)
+        self.assertEqual(tl.tracks[0][1].duration().value, 51.0)
+        self.assertEqual(tl.tracks[0][1].visible_range().duration.value, 51 + 35)
+        self.assertIsInstance(tl.tracks[0][2], otio.schema.Transition)
+        self.assertEqual(tl.tracks[0][2].duration().value, 35.0)
+        self.assertEqual(tl.tracks[0][3].duration().value, 81.0)
+        self.assertEqual(tl.tracks[0][3].visible_range().duration.value, 81 + 64)
+        self.assertIsInstance(tl.tracks[0][4], otio.schema.Transition)
+        self.assertEqual(tl.tracks[0][4].duration().value, 64.0)
+        self.assertEqual(tl.tracks[0][5].duration().value, 84.0)
+        self.assertEqual(tl.tracks[0][5].visible_range().duration.value, 84.0)
+        self.assertEqual(tl.tracks[0][6].duration().value, 96.0)
+        self.assertEqual(tl.tracks[0][7].duration().value, 135.0)
+
+    def test_enabled(self):
+        tl = otio.adapters.read_from_file(ENABLED_TEST)
+        # Exception is raised because the OTIO file has two tracks and cmx_3600 only
+        # supports one
+        with self.assertRaises(otio.exceptions.NotSupportedError):
+            otio.adapters.write_to_string(tl, adapter_name="cmx_3600")
+
+        # Disable top track so we only have one track
+        tl.tracks[1].enabled = False
+        result = otio.adapters.write_to_string(tl, adapter_name="cmx_3600")
+        expected = r'''TITLE: enable_test
+
+001  Clip001  V     C        00:00:00:00 00:00:00:03 00:00:00:00 00:00:00:03
+* FROM CLIP NAME:  Clip-001
+* OTIO TRUNCATED REEL NAME FROM: Clip-001
+002  Clip002  V     C        00:00:00:03 00:00:00:06 00:00:00:03 00:00:00:06
+* FROM CLIP NAME:  Clip-002
+* OTIO TRUNCATED REEL NAME FROM: Clip-002
+'''
+
+        self.assertMultiLineEqual(result, expected)
+
+        # Disable first clip in the track
+        tl.tracks[0].find_children()[0].enabled = False
+        result = otio.adapters.write_to_string(tl, adapter_name="cmx_3600")
+        expected = r'''TITLE: enable_test
+
+001  Clip002  V     C        00:00:00:03 00:00:00:06 00:00:00:03 00:00:00:06
+* FROM CLIP NAME:  Clip-002
+* OTIO TRUNCATED REEL NAME FROM: Clip-002
+'''
+
+        self.assertMultiLineEqual(result, expected)
 
 
 if __name__ == "__main__":

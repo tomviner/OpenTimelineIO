@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Contributors to the OpenTimelineIO project
 from setuptools import setup
 
 """
@@ -35,7 +37,7 @@ setup(
     version='1.0.0',
     description='Adapter writes number of tracks to file.',
     license='Modified Apache 2.0 License',
-    author='Pixar Animation Studios',
-    author_email='opentimelineio@pixar.com',
+    author='Contributors to the OpenTimelineIO project',
+    author_email='otio-discussion@lists.aswf.io',
     url='http://opentimeline.io',
 )

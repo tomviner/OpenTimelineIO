@@ -1,27 +1,7 @@
 #!/usr/bin/env python
 #
-# Copyright 2017 Pixar Animation Studios
-#
-# Licensed under the Apache License, Version 2.0 (the "Apache License")
-# with the following modification; you may not use this file except in
-# compliance with the Apache License and the following modification to it:
-# Section 6. Trademarks. is deleted and replaced with:
-#
-# 6. Trademarks. This License does not grant permission to use the trade
-#    names, trademarks, service marks, or product names of the Licensor
-#    and its affiliates, except as required to comply with Section 4(c) of
-#    the License and to reproduce the content of the NOTICE file.
-#
-# You may obtain a copy of the Apache License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the Apache License with the above modification is
-# distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-# KIND, either express or implied. See the Apache License for the specific
-# language governing permissions and limitations under the Apache License.
-#
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Contributors to the OpenTimelineIO project
 
 """Print the contents of an OTIO file to stdout."""
 
@@ -67,6 +47,16 @@ def _parsed_args():
         )
     )
     parser.add_argument(
+        '-H',
+        '--hook-function-arg',
+        type=str,
+        default=[],
+        action='append',
+        help='Extra arguments to be passed to the hook functions in the form of '
+        'key=value. Values are strings, numbers or Python literals: True, '
+        'False, etc. Can be used multiple times: -H burrito="bar" -H taco=12.'
+    )
+    parser.add_argument(
         '-M',
         '--media-linker-arg',
         type=str,
@@ -83,6 +73,7 @@ def _parsed_args():
 def _otio_compatible_file_to_json_string(
         fpath,
         media_linker_name,
+        hooks_args,
         media_linker_argument_map,
         adapter_argument_map
 ):
@@ -94,6 +85,7 @@ def _otio_compatible_file_to_json_string(
     return adapter.write_to_string(
         otio.adapters.read_from_file(
             fpath,
+            hook_function_argument_map=hooks_args,
             media_linker_name=media_linker_name,
             media_linker_argument_map=media_linker_argument_map,
             **adapter_argument_map
@@ -115,6 +107,10 @@ def main():
             args.adapter_arg,
             "adapter"
         )
+        hooks_args = otio.console.console_utils.arg_list_to_map(
+            args.hook_function_arg,
+            "hook function"
+        )
         media_linker_argument_map = otio.console.console_utils.arg_list_to_map(
             args.media_linker_arg,
             "media linker"
@@ -128,6 +124,7 @@ def main():
             _otio_compatible_file_to_json_string(
                 fpath,
                 media_linker_name,
+                hooks_args,
                 media_linker_argument_map,
                 read_adapter_arg_map
             )

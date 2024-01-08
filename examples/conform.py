@@ -1,30 +1,10 @@
 #!/usr/bin/env python
 #
-# Copyright 2017 Pixar Animation Studios
-#
-# Licensed under the Apache License, Version 2.0 (the "Apache License")
-# with the following modification; you may not use this file except in
-# compliance with the Apache License and the following modification to it:
-# Section 6. Trademarks. is deleted and replaced with:
-#
-# 6. Trademarks. This License does not grant permission to use the trade
-#    names, trademarks, service marks, or product names of the Licensor
-#    and its affiliates, except as required to comply with Section 4(c) of
-#    the License and to reproduce the content of the NOTICE file.
-#
-# You may obtain a copy of the Apache License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the Apache License with the above modification is
-# distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-# KIND, either express or implied. See the Apache License for the specific
-# language governing permissions and limitations under the Apache License.
-#
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Contributors to the OpenTimelineIO project
 
 """Example OTIO script that reads a timeline and then relinks clips
-to movie files found in a given folder, based on matching names.
+to movie files found in a given folder, based on matching clip names to filenames.
 
 Demo:
 
@@ -45,6 +25,7 @@ Saved conformed.otio with 100 clips.
 """
 
 import argparse
+from argparse import RawTextHelpFormatter
 import glob
 import os
 
@@ -53,13 +34,15 @@ import opentimelineio as otio
 
 def parse_args():
     """ parse arguments out of sys.argv """
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=__doc__,
+                                     formatter_class=RawTextHelpFormatter)
     parser.add_argument(
-        'input',
+        '-i',
+        '--input',
         type=str,
         required=True,
-        help='Timeline file(s) to read. Any format supported by OTIO will'
-        ' work.'
+        help='Timeline file to read. Supported formats: {adapters}'
+             ''.format(adapters=otio.adapters.available_adapter_names())
     )
     parser.add_argument(
         '-f',
@@ -81,25 +64,25 @@ def parse_args():
 def _find_matching_media(name, folder):
     """Look for media with this name in this folder."""
 
-    # In this case we're looking in the filesystem.
-    # In your case, you might want to look in your asset management system
-    # and you might want to use studio-specific metadata in the clip instead
-    # of just the clip name.
-    # Something like this:
+    # This function is an example which searches the file system for matching media.
+    # A real world studio implementation would likely look in an asset management system
+    # and use studio-specific metadata in the clip's metadata dictionary instead
+    # of matching the clip name.
+    # For example:
     # shot = asset_database.find_shot(clip.metadata['mystudio']['shotID'])
     # new_media = shot.latest_render(format='mov')
 
-    matches = glob.glob("{0}/{1}.*".format(folder, name))
-    matches = map(os.path.abspath, matches)
+    matches = glob.glob(f"{folder}/{name}.*")
+    matches = list(map(os.path.abspath, matches))
 
-    if len(matches) == 0:
+    if not matches:
         # print "DEBUG: No match for clip '{0}'".format(name)
         return None
     if len(matches) == 1:
         return matches[0]
     else:
         print(
-            "WARNING: {0} matches found for clip '{1}', using '{2}'".format(
+            "WARNING: {} matches found for clip '{}', using '{}'".format(
                 len(matches),
                 name,
                 matches[0]
@@ -116,7 +99,7 @@ def _conform_timeline(timeline, folder):
 
     count = 0
 
-    for clip in timeline.each_clip():
+    for clip in timeline.find_clips():
         # look for a media file that matches the clip's name
         new_path = _find_matching_media(clip.name, folder)
 
@@ -124,10 +107,11 @@ def _conform_timeline(timeline, folder):
         if not new_path:
             continue
 
-        # if we found one, then relink to the new path
+        # relink to the found path
         clip.media_reference = otio.schema.ExternalReference(
             target_url="file://" + new_path,
-            available_range=None    # we don't know the available range
+            available_range=None  # the available range is unknown without
+                                  # opening the file
         )
         count += 1
 
@@ -139,12 +123,12 @@ def main():
 
     timeline = otio.adapters.read_from_file(args.input)
     count = _conform_timeline(timeline, args.folder)
-    print("Relinked {0} clips to new media.".format(count))
+    print(f"Relinked {count} clips to new media.")
     otio.adapters.write_to_file(timeline, args.output)
     print(
         "Saved {} with {} clips.".format(
             args.output,
-            len(list(timeline.each_clip()))
+            len(list(timeline.find_clips()))
         )
     )
 

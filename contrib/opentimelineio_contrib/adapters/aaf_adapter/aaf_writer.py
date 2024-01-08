@@ -1,26 +1,5 @@
-#
-# Copyright 2019 Pixar Animation Studios
-#
-# Licensed under the Apache License, Version 2.0 (the "Apache License")
-# with the following modification; you may not use this file except in
-# compliance with the Apache License and the following modification to it:
-# Section 6. Trademarks. is deleted and replaced with:
-#
-# 6. Trademarks. This License does not grant permission to use the trade
-#    names, trademarks, service marks, or product names of the Licensor
-#    and its affiliates, except as required to comply with Section 4(c) of
-#    the License and to reproduce the content of the NOTICE file.
-#
-# You may obtain a copy of the Apache License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the Apache License with the above modification is
-# distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-# KIND, either express or implied. See the Apache License for the specific
-# language governing permissions and limitations under the Apache License.
-#
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Contributors to the OpenTimelineIO project
 
 """AAF Adapter Transcriber
 
@@ -83,7 +62,7 @@ class AAFValidationError(AAFAdapterError):
     pass
 
 
-class AAFFileTranscriber(object):
+class AAFFileTranscriber:
     """
     AAFFileTranscriber
 
@@ -163,7 +142,7 @@ class AAFFileTranscriber(object):
             transcriber = AudioTrackTranscriber(self, otio_track)
         else:
             raise otio.exceptions.NotSupportedError(
-                "Unsupported track kind: {}".format(otio_track.kind))
+                f"Unsupported track kind: {otio_track.kind}")
         return transcriber
 
 
@@ -173,7 +152,7 @@ def validate_metadata(timeline):
     all_checks = [__check(timeline, "duration().rate")]
     edit_rate = __check(timeline, "duration().rate").value
 
-    for child in timeline.each_child():
+    for child in timeline.find_children():
         checks = []
         if _is_considered_gap(child):
             checks = [
@@ -253,7 +232,7 @@ def _gather_clip_mob_ids(input_otio,
 
     clip_mob_ids = {}
 
-    for otio_clip in input_otio.each_clip():
+    for otio_clip in input_otio.find_clips():
         if _is_considered_gap(otio_clip):
             continue
         for strategy in strategies:
@@ -262,7 +241,7 @@ def _gather_clip_mob_ids(input_otio,
                 clip_mob_ids[otio_clip] = mob_id
                 break
         else:
-            raise AAFAdapterError("Cannot find mob ID for clip {}".format(otio_clip))
+            raise AAFAdapterError(f"Cannot find mob ID for clip {otio_clip}")
 
     return clip_mob_ids
 
@@ -275,7 +254,7 @@ def _stackify_nested_groups(timeline):
     """
     copied = copy.deepcopy(timeline)
     for track in copied.tracks:
-        for i, child in enumerate(track.each_child()):
+        for i, child in enumerate(track.find_children()):
             is_nested = isinstance(child, otio.schema.Track)
             is_parent_in_stack = isinstance(child.parent(), otio.schema.Stack)
             if is_nested and not is_parent_in_stack:
@@ -286,7 +265,7 @@ def _stackify_nested_groups(timeline):
     return copied
 
 
-class _TrackTranscriber(object):
+class _TrackTranscriber:
     """
     _TrackTranscriber is the base class for the conversion of a given otio track.
 
@@ -308,7 +287,7 @@ class _TrackTranscriber(object):
         self.compositionmob = root_file_transcriber.compositionmob
         self.aaf_file = root_file_transcriber.aaf_file
         self.otio_track = otio_track
-        self.edit_rate = next(self.otio_track.each_child()).duration().rate
+        self.edit_rate = self.otio_track.find_children()[0].duration().rate
         self.timeline_mobslot, self.sequence = self._create_timeline_mobslot()
         self.timeline_mobslot.name = self.otio_track.name
 
@@ -331,7 +310,7 @@ class _TrackTranscriber(object):
             return operation_group
         else:
             raise otio.exceptions.NotSupportedError(
-                "Unsupported otio child type: {}".format(type(otio_child)))
+                f"Unsupported otio child type: {type(otio_child)}")
 
     @property
     @abc.abstractmethod
@@ -688,11 +667,11 @@ class AudioTrackTranscriber(_TrackTranscriber):
         length = int(otio_clip.duration().value)
         c1 = self.aaf_file.create.ControlPoint()
         c1["ControlPointSource"].value = 2
-        c1["Time"].value = aaf2.rational.AAFRational("0/{}".format(length))
+        c1["Time"].value = aaf2.rational.AAFRational(f"0/{length}")
         c1["Value"].value = 0
         c2 = self.aaf_file.create.ControlPoint()
         c2["ControlPointSource"].value = 2
-        c2["Time"].value = aaf2.rational.AAFRational("{}/{}".format(length - 1, length))
+        c2["Time"].value = aaf2.rational.AAFRational(f"{length - 1}/{length}")
         c2["Value"].value = 0
         varying_value = self.aaf_file.create.VaryingValue()
         varying_value.parameterdef = param_def
@@ -701,7 +680,7 @@ class AudioTrackTranscriber(_TrackTranscriber):
         opgroup = self.timeline_mobslot.segment
         opgroup.parameters.append(varying_value)
 
-        return super(AudioTrackTranscriber, self).aaf_sourceclip(otio_clip)
+        return super().aaf_sourceclip(otio_clip)
 
     def _create_timeline_mobslot(self):
         """
@@ -764,7 +743,7 @@ class AudioTrackTranscriber(_TrackTranscriber):
         return [param_def_level], level
 
 
-class __check(object):
+class __check:
     """
     __check is a private helper class that safely gets values given to check
     for existence and equality

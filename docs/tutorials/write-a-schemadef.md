@@ -13,7 +13,7 @@ and registered in one plugin, or you can use a separate plugin for each of them.
 
 Here's an example of defining a very simple class called ``MyThing``:
 
-```
+```python
 import opentimelineio as otio
 
 @otio.core.register_type
@@ -60,7 +60,7 @@ but your schema class could have any number of parameters as needed to
 contain the data fields you want to have in your class.
 
 One or more class definitions like this one can be included in a plugin
-source file, which must then be added to the plugin manifest as shown below:
+source file, which must then be added to the plugin manifest as shown below.
 
 
 ## Registering Your SchemaDef Plugin
@@ -69,14 +69,13 @@ To create a new SchemaDef plugin, you need to create a Python source file
 as shown in the example above.  Let's call it ``mything.py``.
 Then you must add it to a plugin manifest:
 
-```
+```json
 {
     "OTIO_SCHEMA" : "PluginManifest.1",
     "schemadefs" : [
         {
             "OTIO_SCHEMA" : "SchemaDef.1",
             "name" : "mything",
-            "execution_scope" : "in process",
             "filepath" : "mything.py"
          }
     ]
@@ -85,7 +84,8 @@ Then you must add it to a plugin manifest:
 
 The same plugin manifest may also include adapters and media linkers, if desired.
 
-Then you need to add this manifest to your `$OTIO_PLUGIN_MANIFEST_PATH` environment variable (which is "`:`" separated).
+Then you need to add this manifest to your {term}`OTIO_PLUGIN_MANIFEST_PATH` environment
+variable.
 
 ## Using the New Schema in Your Code
 
@@ -106,7 +106,7 @@ Once the plugin has been loaded, SchemaDef plugin modules are magically inserted
 into a namespace called ``otio.schemadef``, so you can create a class instance 
 just like this:
 
-```
+```python
 import opentimelineio as otio
 
 mine = otio.schemadef.my_thing.MyThing(arg1, argN)
@@ -115,7 +115,7 @@ mine = otio.schemadef.my_thing.MyThing(arg1, argN)
 An alternative approach is to use the ``instance_from_schema``
 mechanism, which requires that you create and provide a dict of the parameters:
 
-```
+```python
     mything = otio.core.instance_from_schema("MyThing", 1, {
         "arg1": arg1,
         "argN": argN

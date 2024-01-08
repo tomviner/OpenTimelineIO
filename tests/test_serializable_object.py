@@ -1,32 +1,13 @@
 #!/usr/bin/env python
 #
-# Copyright 2017 Pixar Animation Studios
-#
-# Licensed under the Apache License, Version 2.0 (the "Apache License")
-# with the following modification; you may not use this file except in
-# compliance with the Apache License and the following modification to it:
-# Section 6. Trademarks. is deleted and replaced with:
-#
-# 6. Trademarks. This License does not grant permission to use the trade
-#    names, trademarks, service marks, or product names of the Licensor
-#    and its affiliates, except as required to comply with Section 4(c) of
-#    the License and to reproduce the content of the NOTICE file.
-#
-# You may obtain a copy of the Apache License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the Apache License with the above modification is
-# distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-# KIND, either express or implied. See the Apache License for the specific
-# language governing permissions and limitations under the Apache License.
-#
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Contributors to the OpenTimelineIO project
 
 import opentimelineio as otio
 import opentimelineio.test_utils as otio_test_utils
 
 import unittest
+import json
 
 
 class OpenTimeTypeSerializerTest(unittest.TestCase):
@@ -76,6 +57,7 @@ class SerializableObjTest(unittest.TestCase, otio_test_utils.OTIOAssertions):
 
         # deep copy
         so_cp = copy.deepcopy(so)
+        self.assertIsNotNone(so_cp)
         self.assertIsOTIOEquivalentTo(so, so_cp)
 
         so_cp.metadata["foo"] = "bar"
@@ -98,48 +80,6 @@ class SerializableObjTest(unittest.TestCase, otio_test_utils.OTIOAssertions):
 
         self.assertEqual(Foo, type(foo_copy))
 
-    def test_schema_versioning(self):
-        @otio.core.register_type
-        class FakeThing(otio.core.SerializableObject):
-            _serializable_label = "Stuff.1"
-            foo_two = otio.core.serializable_field("foo_2", doc="test")
-        ft = FakeThing()
-
-        self.assertEqual(ft.schema_name(), "Stuff")
-        self.assertEqual(ft.schema_version(), 1)
-
-        with self.assertRaises(otio.exceptions.UnsupportedSchemaError):
-            otio.core.instance_from_schema(
-                "Stuff",
-                2,
-                {"foo": "bar"}
-            )
-
-        ft = otio.core.instance_from_schema("Stuff", 1, {"foo": "bar"})
-        self.assertEqual(ft._dynamic_fields['foo'], "bar")
-
-        @otio.core.register_type
-        class FakeThing(otio.core.SerializableObject):
-            _serializable_label = "NewStuff.4"
-            foo_two = otio.core.serializable_field("foo_2")
-
-        @otio.core.upgrade_function_for(FakeThing, 2)
-        def upgrade_one_to_two(_data_dict):
-            return {"foo_2": _data_dict["foo"]}
-
-        @otio.core.upgrade_function_for(FakeThing, 3)
-        def upgrade_one_to_two_three(_data_dict):
-            return {"foo_3": _data_dict["foo_2"]}
-
-        ft = otio.core.instance_from_schema("NewStuff", 1, {"foo": "bar"})
-        self.assertEqual(ft._dynamic_fields['foo_3'], "bar")
-
-        ft = otio.core.instance_from_schema("NewStuff", 3, {"foo_2": "bar"})
-        self.assertEqual(ft._dynamic_fields['foo_3'], "bar")
-
-        ft = otio.core.instance_from_schema("NewStuff", 4, {"foo_3": "bar"})
-        self.assertEqual(ft._dynamic_fields['foo_3'], "bar")
-
     def test_equality(self):
         o1 = otio.core.SerializableObject()
         o2 = otio.core.SerializableObject()
@@ -149,12 +89,12 @@ class SerializableObjTest(unittest.TestCase, otio_test_utils.OTIOAssertions):
 
     def test_equivalence_symmetry(self):
         def test_equivalence(A, B, msg):
-            self.assertTrue(A.is_equivalent_to(B), "{}: A ~= B".format(msg))
-            self.assertTrue(B.is_equivalent_to(A), "{}: B ~= A".format(msg))
+            self.assertTrue(A.is_equivalent_to(B), f"{msg}: A ~= B")
+            self.assertTrue(B.is_equivalent_to(A), f"{msg}: B ~= A")
 
         def test_difference(A, B, msg):
-            self.assertFalse(A.is_equivalent_to(B), "{}: A ~= B".format(msg))
-            self.assertFalse(B.is_equivalent_to(A), "{}: B ~= A".format(msg))
+            self.assertFalse(A.is_equivalent_to(B), f"{msg}: A ~= B")
+            self.assertFalse(B.is_equivalent_to(A), f"{msg}: B ~= A")
 
         A = otio.core.Composable()
         B = otio.core.Composable()
@@ -172,6 +112,152 @@ class SerializableObjTest(unittest.TestCase, otio_test_utils.OTIOAssertions):
     def test_truthiness(self):
         o = otio.core.SerializableObject()
         self.assertTrue(o)
+
+    def test_instancing_without_instancing_support(self):
+        o = otio.core.SerializableObjectWithMetadata()
+        c = otio.core.SerializableObjectWithMetadata()
+        o.metadata["child1"] = c
+        o.metadata["child2"] = c
+        self.assertTrue(o.metadata["child1"] is o.metadata["child2"])
+
+        oCopy = o.clone()
+        # Note: If we ever enable INSTANCING_SUPPORT in the C++ code,
+        # then this will (and should) fail
+        self.assertTrue(oCopy.metadata["child1"] is not oCopy.metadata["child2"])
+
+    def test_cycle_detection(self):
+        o = otio.core.SerializableObjectWithMetadata()
+        o.metadata["myself"] = o
+
+        # Note: If we ever enable INSTANCING_SUPPORT in the C++ code,
+        # then modify the code below to be:
+        #   oCopy = o.clone()
+        #   self.assertTrue(oCopy is oCopy.metadata["myself"])
+        with self.assertRaises(ValueError):
+            o.clone()
+
+
+class VersioningTests(unittest.TestCase, otio_test_utils.OTIOAssertions):
+    def test_schema_definition(self):
+        """define a schema and instantiate it from python"""
+
+        # ensure that the type hasn't already been registered
+        self.assertNotIn("Stuff", otio.core.type_version_map())
+
+        @otio.core.register_type
+        class FakeThing(otio.core.SerializableObject):
+            _serializable_label = "Stuff.1"
+            foo_two = otio.core.serializable_field("foo_2", doc="test")
+        ft = FakeThing()
+
+        self.assertEqual(ft.schema_name(), "Stuff")
+        self.assertEqual(ft.schema_version(), 1)
+
+        with self.assertRaises(otio.exceptions.UnsupportedSchemaError):
+            otio.core.instance_from_schema(
+                "Stuff",
+                2,
+                {"foo": "bar"}
+            )
+
+        version_map = otio.core.type_version_map()
+        self.assertEqual(version_map["Stuff"], 1)
+
+        ft = otio.core.instance_from_schema("Stuff", 1, {"foo": "bar"})
+        self.assertEqual(ft._dynamic_fields['foo'], "bar")
+
+    @unittest.skip("@TODO: disabled pending discussion")
+    def test_double_register_schema(self):
+        @otio.core.register_type
+        class DoubleReg(otio.core.SerializableObject):
+            _serializable_label = "Stuff.1"
+            foo_two = otio.core.serializable_field("foo_2", doc="test")
+        _ = DoubleReg()  # quiet pyflakes
+
+        # not allowed to register a type twice
+        with self.assertRaises(ValueError):
+            @otio.core.register_type
+            class DoubleReg(otio.core.SerializableObject):
+                _serializable_label = "Stuff.1"
+
+    def test_upgrade_versions(self):
+        """Test adding an upgrade functions for a type"""
+
+        @otio.core.register_type
+        class FakeThing(otio.core.SerializableObject):
+            _serializable_label = "NewStuff.4"
+            foo_two = otio.core.serializable_field("foo_2")
+
+        @otio.core.upgrade_function_for(FakeThing, 2)
+        def upgrade_one_to_two(_data_dict):
+            return {"foo_2": _data_dict["foo"]}
+
+        @otio.core.upgrade_function_for(FakeThing, 3)
+        def upgrade_one_to_two_three(_data_dict):
+            return {"foo_3": _data_dict["foo_2"]}
+
+        # @TODO: further discussion required
+        # not allowed to overwrite registered functions
+        # with self.assertRaises(ValueError):
+        #     @otio.core.upgrade_function_for(FakeThing, 3)
+        #     def upgrade_one_to_two_three_again(_data_dict):
+        #         raise RuntimeError("shouldn't see this ever")
+
+        ft = otio.core.instance_from_schema("NewStuff", 1, {"foo": "bar"})
+        self.assertEqual(ft._dynamic_fields['foo_3'], "bar")
+
+        ft = otio.core.instance_from_schema("NewStuff", 3, {"foo_2": "bar"})
+        self.assertEqual(ft._dynamic_fields['foo_3'], "bar")
+
+        ft = otio.core.instance_from_schema("NewStuff", 4, {"foo_3": "bar"})
+        self.assertEqual(ft._dynamic_fields['foo_3'], "bar")
+
+    def test_upgrade_rename(self):
+        """test that upgrading system handles schema renames correctly"""
+
+        @otio.core.register_type
+        class FakeThingToRename(otio.core.SerializableObject):
+            _serializable_label = "ThingToRename.2"
+            my_field = otio.core.serializable_field("my_field", doc="example")
+
+        thing = otio.core.type_version_map()
+        self.assertTrue(thing)
+
+    def test_downgrade_version(self):
+        """ test a python defined downgrade function"""
+
+        @otio.core.register_type
+        class FakeThing(otio.core.SerializableObject):
+            _serializable_label = "FakeThingToDowngrade.2"
+            foo_two = otio.core.serializable_field("foo_2")
+
+        @otio.core.downgrade_function_from(FakeThing, 2)
+        def downgrade_2_to_1(_data_dict):
+            return {"foo": _data_dict["foo_2"]}
+
+        # @TODO: further discussion required
+        # # not allowed to overwrite registered functions
+        # with self.assertRaises(ValueError):
+        #     @otio.core.downgrade_function_from(FakeThing, 2)
+        #     def downgrade_2_to_1_again(_data_dict):
+        #         raise RuntimeError("shouldn't see this ever")
+
+        f = FakeThing()
+        f.foo_two = "a thing here"
+
+        downgrade_target = {"FakeThingToDowngrade": 1}
+
+        result = json.loads(
+            otio.adapters.otio_json.write_to_string(f, downgrade_target)
+        )
+
+        self.assertDictEqual(
+            result,
+            {
+                "OTIO_SCHEMA": "FakeThingToDowngrade.1",
+                "foo": "a thing here",
+            }
+        )
 
 
 if __name__ == '__main__':

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright Contributors to the OpenTimelineIO project
+
 #include "otio_errorStatusHandler.h"
 #include "opentimelineio/stringUtils.h"
 #include "opentimelineio/serializableObject.h"
@@ -25,15 +28,15 @@ struct _CannotComputeAvailableRangeException : public OTIOException {
 };
 
 ErrorStatusHandler::~ErrorStatusHandler() noexcept(false) {
-    if (!error_status) {
+    if (!is_error(error_status)) {
         return;
     }
-    
+
     switch(error_status.outcome) {
     case ErrorStatus::NOT_IMPLEMENTED:
-        throw py::not_implemented_error();
+        throw py::not_implemented_error(error_status.details);
     case ErrorStatus::ILLEGAL_INDEX:
-        throw py::index_error();
+        throw py::index_error(error_status.details);
     case ErrorStatus::KEY_NOT_FOUND:
         throw py::key_error(error_status.details);
     case ErrorStatus::INTERNAL_ERROR:
@@ -47,9 +50,11 @@ ErrorStatusHandler::~ErrorStatusHandler() noexcept(false) {
     case ErrorStatus::JSON_PARSE_ERROR:
         throw py::value_error("JSON parse error while reading: " + details());
     case ErrorStatus::FILE_OPEN_FAILED:
-        throw py::value_error("failed to open file for reading: " + details());
+        PyErr_SetFromErrnoWithFilename(PyExc_OSError, details().c_str());
+        throw py::error_already_set();
     case ErrorStatus::FILE_WRITE_FAILED:
-        throw py::value_error("failed to open file for writing: " + details());
+        PyErr_SetFromErrnoWithFilename(PyExc_OSError, details().c_str());
+        throw py::error_already_set();
     case ErrorStatus::SCHEMA_VERSION_UNSUPPORTED:
         throw _UnsupportedSchemaException(full_details());
     case ErrorStatus::NOT_A_CHILD_OF:
@@ -58,6 +63,12 @@ ErrorStatusHandler::~ErrorStatusHandler() noexcept(false) {
         throw _NotAChildException(full_details());
     case ErrorStatus::CANNOT_COMPUTE_AVAILABLE_RANGE:
         throw _CannotComputeAvailableRangeException(full_details());
+    case ErrorStatus::OBJECT_CYCLE:
+        throw py::value_error("Detected SerializableObject cycle while copying/serializing: " + details());
+    case ErrorStatus::MEDIA_REFERENCES_DO_NOT_CONTAIN_ACTIVE_KEY:
+        throw py::value_error("The media references do not contain the active key");
+    case ErrorStatus::MEDIA_REFERENCES_CONTAIN_EMPTY_KEY:
+        throw py::value_error("The media references contain an empty key");
     default:
         throw py::value_error(full_details());
     }

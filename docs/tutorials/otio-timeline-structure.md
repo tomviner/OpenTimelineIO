@@ -5,6 +5,26 @@ clips, gaps, and transitions. This document is meant to clarify how these
 objects nest within each other, and how they work together to represent an
 audio/video timeline.
 
+## Rendering
+
+Rendering of the image tracks in a timeline is done in painter order. The layers
+in a stack are iterated from the bottom (the first entry in the stack) towards
+the top (the final entry in the stack). Images in a stack overlay lower images
+using an alpha composite operation respecting any alpha in the source materials.
+All compositing is assumed to occur over a background of zero values in color components, and 100% values for alpha components.
+Within a track, clips may overlap via a transition. In that case, the 
+contribution of track is the linear blend of the elements joined by the
+transition.
+
+If there are effects on a clip, OpenTimelineIO does not say anything about the
+impact of the effect and deviation from the base behavior is application
+specific.
+
+Rendering of the audio tracks is additive. It is strongly advised, but not
+required, that the summed audio is summed as floating point, and that it is 
+processed through a compression filter in order to prevent clipping and 
+distortion. 
+
 ## Simple Cut List
 
 Let’s start with a simple cut list of a few clips. This is stored as a 
@@ -40,7 +60,7 @@ media file contains media that starts at 4 seconds and 4 frames (timecode
 In many cases you might not know the available_range because the media is 
 missing, or points to a file path or URL which might be expensive to query.
 If that’s the case, then the available_range of a media_reference will be 
-None.
+`None`.
 
 Above the media references, we see that each `Clip` has a source_range, which 
 specifies a trimmed segment of media. In cases where we only want a portion 
@@ -48,7 +68,7 @@ of the available media, the source_range will start at a higher start_time,
 and/or have a shorter duration. The colored segments of "Media-001", "Media-002"
 and "Media-003" show the portion that each clip’s source_range references.
 
-In the case of "Clip-004", the source_range is None, so it exposes its entire 
+In the case of "Clip-004", the source_range is `None`, so it exposes its entire 
 media reference. In the OTIO API, you can query the trimmed_range() of a 
 clip to get the range of media used regardless of whether it has a 
 source_range, available_range or both - but it needs at least one of the 
@@ -150,7 +170,7 @@ If a source_range is specified, then only a trimmed segment of the inner
 available_range of the nested composition is computed and included in 
 the outer composition.
 
-"Nested Stack" contains two tracks, with some clips, gaps, a track-level 
+"Nested Stack" contains two tracks, with some clips, gaps, and a track-level 
 source_range on the lower track. This illustrates how the content of 
 "Nested Stack" is composed upwards into "Track-001" so that a trimmed portion 
 of "Clip-005" and "Clip-003" appear in the flattened composition.

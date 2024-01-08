@@ -1,33 +1,19 @@
 #!/usr/bin/env python
 #
-# Copyright 2017 Pixar Animation Studios
-#
-# Licensed under the Apache License, Version 2.0 (the "Apache License")
-# with the following modification; you may not use this file except in
-# compliance with the Apache License and the following modification to it:
-# Section 6. Trademarks. is deleted and replaced with:
-#
-# 6. Trademarks. This License does not grant permission to use the trade
-#    names, trademarks, service marks, or product names of the Licensor
-#    and its affiliates, except as required to comply with Section 4(c) of
-#    the License and to reproduce the content of the NOTICE file.
-#
-# You may obtain a copy of the Apache License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the Apache License with the above modification is
-# distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-# KIND, either express or implied. See the Apache License for the specific
-# language governing permissions and limitations under the Apache License.
-#
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Contributors to the OpenTimelineIO project
 
 import argparse
 import sys
 import copy
 
 import opentimelineio as otio
+
+# on some python interpreters, pkg_resources is not available
+try:
+    import pkg_resources
+except ImportError:
+    pkg_resources = None
 
 __doc__ = """ Python wrapper around OTIO to convert timeline files between \
 formats.
@@ -47,14 +33,14 @@ def _parsed_args():
         '-i',
         '--input',
         type=str,
-        required=True,
+        required=False,
         help='path to input file',
     )
     parser.add_argument(
         '-o',
         '--output',
         type=str,
-        required=True,
+        required=False,
         help='path to output file',
     )
     parser.add_argument(
@@ -91,6 +77,16 @@ def _parsed_args():
         )
     )
     parser.add_argument(
+        '-H',
+        '--hook-function-arg',
+        type=str,
+        default=[],
+        action='append',
+        help='Extra arguments to be passed to the hook functions in the form of '
+        'key=value. Values are strings, numbers or Python literals: True, '
+        'False, etc. Can be used multiple times: -H burrito="bar" -H taco=12.'
+    )
+    parser.add_argument(
         '-M',
         '--media-linker-arg',
         type=str,
@@ -120,6 +116,16 @@ def _parsed_args():
         'key=value. Values are strings, numbers or Python literals: True, '
         'False, etc. Can be used multiple times: -A burrito="bar" -A taco=12.'
     )
+    parser.add_argument(
+        '--version',
+        default=False,
+        action="store_true",
+        help=(
+            "Print the otio and pkg_resource installed plugin version "
+            "information to the commandline and then exit."
+        ),
+    )
+
     trim_args = parser.add_argument_group(
         title="Trim Arguments",
         description="Arguments that allow you to trim the OTIO file."
@@ -146,6 +152,22 @@ def _parsed_args():
     )
 
     result = parser.parse_args()
+
+    # print version information to the shell
+    if result.version:
+        print(f"OpenTimelineIO version: {otio.__version__}")
+
+        entry_points = otio.plugins.manifest.plugin_entry_points()
+        if entry_points:
+            print("Plugins from installed packages:")
+            for plugin in entry_points:
+                print(f"   {plugin.dist.name} {plugin.dist.version}")
+        parser.exit()
+
+    if not result.input:
+        parser.error("-i/--input is a required argument")
+    if not result.output:
+        parser.error("-o/--output is a required argument")
 
     if result.begin is not None and result.end is None:
         parser.error("--begin requires --end.")
@@ -201,6 +223,10 @@ def main():
             args.adapter_arg,
             "input adapter"
         )
+        hooks_args = otio.console.console_utils.arg_list_to_map(
+            args.hook_function_arg,
+            "hook function"
+        )
         ml_args = otio.console.console_utils.arg_list_to_map(
             args.media_linker_arg,
             "media linker"
@@ -212,6 +238,7 @@ def main():
     result_tl = otio.adapters.read_from_file(
         args.input,
         in_adapter,
+        hook_function_argument_map=hooks_args,
         media_linker_name=media_linker_name,
         media_linker_argument_map=ml_args,
         **read_adapter_arg_map
@@ -223,7 +250,7 @@ def main():
         for track in args.tracks.split(","):
             tr = result_tl.tracks[int(track)]
             del result_tl.tracks[int(track)]
-            print("track {0} is of kind: '{1}'".format(track, tr.kind))
+            print(f"track {track} is of kind: '{tr.kind}'")
             result_tracks.append(tr)
         result_tl.tracks = result_tracks
 
@@ -247,6 +274,7 @@ def main():
         result_tl,
         args.output,
         out_adapter,
+        hook_function_argument_map=hooks_args,
         **write_adapter_arg_map
     )
 

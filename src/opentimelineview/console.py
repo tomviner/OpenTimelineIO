@@ -1,34 +1,19 @@
 #!/usr/bin/env python
 #
-# Copyright 2017 Pixar Animation Studios
-#
-# Licensed under the Apache License, Version 2.0 (the "Apache License")
-# with the following modification; you may not use this file except in
-# compliance with the Apache License and the following modification to it:
-# Section 6. Trademarks. is deleted and replaced with:
-#
-# 6. Trademarks. This License does not grant permission to use the trade
-#    names, trademarks, service marks, or product names of the Licensor
-#    and its affiliates, except as required to comply with Section 4(c) of
-#    the License and to reproduce the content of the NOTICE file.
-#
-# You may obtain a copy of the Apache License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the Apache License with the above modification is
-# distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-# KIND, either express or implied. See the Apache License for the specific
-# language governing permissions and limitations under the Apache License.
-#
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Contributors to the OpenTimelineIO project
 
 """Simple otio viewer"""
 
 import os
 import sys
 import argparse
-from PySide2 import QtWidgets, QtGui
+try:
+    from PySide6 import QtWidgets, QtGui
+    from PySide6.QtGui import QAction
+except ImportError:
+    from PySide2 import QtWidgets, QtGui
+    from PySide2.QtWidgets import QAction
 
 import opentimelineio as otio
 import opentimelineio.console as otio_console
@@ -58,6 +43,16 @@ def _parsed_args():
         'False, etc. Can be used multiple times: -a burrito="bar" -a taco=12.'
     )
     parser.add_argument(
+        '-H',
+        '--hook-function-arg',
+        type=str,
+        default=[],
+        action='append',
+        help='Extra arguments to be passed to the hook functions in the form of '
+        'key=value. Values are strings, numbers or Python literals: True, '
+        'False, etc. Can be used multiple times: -H burrito="bar" -H taco=12.'
+    )
+    parser.add_argument(
         '-m',
         '--media-linker',
         type=str,
@@ -85,7 +80,7 @@ def _parsed_args():
 
 class TimelineWidgetItem(QtWidgets.QListWidgetItem):
     def __init__(self, timeline, *args, **kwargs):
-        super(TimelineWidgetItem, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.timeline = timeline
 
 
@@ -93,15 +88,17 @@ class Main(QtWidgets.QMainWindow):
     def __init__(
             self,
             adapter_argument_map,
+            hook_function_argument_map,
             media_linker,
             media_linker_argument_map,
             *args,
             **kwargs
     ):
-        super(Main, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.adapter_argument_map = adapter_argument_map or {}
         self.media_linker = media_linker
         self.media_linker_argument_map = media_linker_argument_map
+        self.hook_function_argument_map = hook_function_argument_map
 
         self._current_file = None
 
@@ -136,11 +133,11 @@ class Main(QtWidgets.QMainWindow):
         # menu
         menubar = self.menuBar()
 
-        file_load = QtWidgets.QAction('Open...', menubar)
+        file_load = QAction('Open...', menubar)
         file_load.setShortcut(QtGui.QKeySequence.Open)
         file_load.triggered.connect(self._file_load)
 
-        exit_action = QtWidgets.QAction('Exit', menubar)
+        exit_action = QAction('Exit', menubar)
         exit_action.setShortcut(QtGui.QKeySequence.Quit)
         exit_action.triggered.connect(self.close)
 
@@ -172,14 +169,14 @@ class Main(QtWidgets.QMainWindow):
 
         extensions = otio.adapters.suffixes_with_defined_adapters(read=True)
 
-        extensions_string = ' '.join('*.{}'.format(x) for x in extensions)
+        extensions_string = ' '.join(f'*.{x}' for x in extensions)
 
         path = str(
             QtWidgets.QFileDialog.getOpenFileName(
                 self,
                 'Open OpenTimelineIO',
                 start_folder,
-                'OTIO ({extensions})'.format(extensions=extensions_string)
+                f'OTIO ({extensions_string})'
             )[0]
         )
 
@@ -188,11 +185,12 @@ class Main(QtWidgets.QMainWindow):
 
     def load(self, path):
         self._current_file = path
-        self.setWindowTitle('OpenTimelineIO View: "{}"'.format(path))
+        self.setWindowTitle(f'OpenTimelineIO View: "{path}"')
         self.details_widget.set_item(None)
         self.tracks_widget.clear()
         file_contents = otio.adapters.read_from_file(
             path,
+            hook_function_argument_map=self.hook_function_argument_map,
             media_linker_name=self.media_linker,
             media_linker_argument_map=self.media_linker_argument_map,
             **self.adapter_argument_map
@@ -221,7 +219,7 @@ class Main(QtWidgets.QMainWindow):
 
         def __callback():
             self._navigation_filter_callback(actions)
-        navigation_menu.triggered[[QtWidgets.QAction]].connect(__callback)
+        navigation_menu.triggered[[QAction]].connect(__callback)
 
     def _navigation_filter_callback(self, filters):
         nav_filter = 0
@@ -233,17 +231,35 @@ class Main(QtWidgets.QMainWindow):
         self.timeline_widget.navigationfilter_changed.emit(nav_filter)
 
     def center(self):
-        frame = self.frameGeometry()
-        desktop = QtWidgets.QApplication.desktop()
-        screen = desktop.screenNumber(
-            desktop.cursor().pos()
-        )
-        centerPoint = desktop.screenGeometry(screen).center()
-        frame.moveCenter(centerPoint)
-        self.move(frame.topLeft())
+        screens = QtWidgets.QApplication.screens()
+        if screens:
+            style = QtWidgets.QApplication.style()
+            title_bar_height = style.pixelMetric(QtWidgets.QStyle.PM_TitleBarHeight)
+
+            screen = screens[0]
+            screen_geo = screen.availableGeometry()
+            screen_w = screen_geo.width()
+            screen_h = screen_geo.height() - title_bar_height
+
+            frame_geo = self.frameGeometry()
+            frame_w = frame_geo.width()
+            frame_h = frame_geo.height()
+
+            new_frame_w = screen_w if frame_w > screen_w else frame_w
+            new_frame_h = screen_h if frame_h > screen_h else frame_h
+            if new_frame_w != frame_w or new_frame_h != frame_h:
+                self.resize(new_frame_w, new_frame_h)
+                frame_geo = self.frameGeometry()
+                frame_w = frame_geo.width()
+                frame_h = frame_geo.height()
+
+            center_point = screen_geo.center()
+            center_point.setY(center_point.y() - title_bar_height // 2)
+            frame_geo.moveCenter(center_point)
+            self.move(frame_geo.topLeft())
 
     def show(self):
-        super(Main, self).show()
+        super().show()
         self.timeline_widget.frame_all()
 
 
@@ -263,6 +279,10 @@ def main():
             args.media_linker_arg,
             "media linker"
         )
+        hook_function_argument_map = otio_console.console_utils.arg_list_to_map(
+            args.hook_function_arg,
+            "hook function"
+        )
     except ValueError as exc:
         sys.stderr.write("\n" + str(exc) + "\n")
         sys.exit(1)
@@ -271,6 +291,7 @@ def main():
 
     window = Main(
         read_adapter_arg_map,
+        hook_function_argument_map,
         media_linker_name,
         media_linker_argument_map
     )

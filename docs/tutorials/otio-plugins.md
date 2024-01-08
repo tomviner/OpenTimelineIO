@@ -28,11 +28,9 @@ Manifest path: `opentimelineio/adapters/builtin_adapters.plugin_manifest.json`
 
 Adapter plugins convert to and from OpenTimelineIO.
 
-<a href="adapters.html" target="_blank"> Adapters documentation page for more
-information</a>
+[Adapters documentation page for more information](./adapters).
 
-<a href="write-an-adapter.html" target="_blank">Tutorial on how to write an
-adapter.</a>
+[Tutorial on how to write an adapter](write-an-adapter).
 
 
 ### cmx_3600
@@ -108,7 +106,7 @@ OpenTimelineIO Final Cut Pro 7 XML Adapter.
 ### otio_json
 
 ```
-This adapter lets you read and write native .otio files
+Adapter for reading and writing native .otio json files.
 ```
 
 *source*: `opentimelineio/adapters/otio_json.py`
@@ -117,14 +115,168 @@ This adapter lets you read and write native .otio files
 *Supported Features (with arguments)*:
 
 - read_from_file:
+```
+De-serializes an OpenTimelineIO object from a file
+
+  Args:
+      filepath (str): The path to an otio file to read from
+
+  Returns:
+      OpenTimeline: An OpenTimeline object
+```
   - filepath
 - read_from_string:
+```
+De-serializes an OpenTimelineIO object from a json string
+
+  Args:
+      input_str (str): A string containing json serialized otio contents
+
+  Returns:
+      OpenTimeline: An OpenTimeline object
+```
   - input_str
+- write_to_file:
+```
+Serializes an OpenTimelineIO object into a file
+
+  Args:
+
+      input_otio (OpenTimeline): An OpenTimeline object
+      filepath (str): The name of an otio file to write to
+      indent (int): number of spaces for each json indentation level.
+  Use -1 for no indentation or newlines.
+
+  If target_schema_versions is None and the environment variable
+  "OTIO_DEFAULT_TARGET_VERSION_FAMILY_LABEL" is set, will read a map out of
+  that for downgrade target.  The variable should be of the form
+  FAMILY:LABEL, for example "MYSTUDIO:JUNE2022".
+
+  Returns:
+      bool: Write success
+
+  Raises:
+      ValueError: on write error
+      otio.exceptions.InvalidEnvironmentVariableError: if there is a problem
+      with the default environment variable
+      "OTIO_DEFAULT_TARGET_VERSION_FAMILY_LABEL".
+```
+  - input_otio
+  - filepath
+  - target_schema_versions
+  - indent
+- write_to_string:
+```
+Serializes an OpenTimelineIO object into a string
+
+  Args:
+      input_otio (OpenTimeline): An OpenTimeline object
+      indent (int): number of spaces for each json indentation level. Use
+  -1 for no indentation or newlines.
+
+  If target_schema_versions is None and the environment variable
+  "OTIO_DEFAULT_TARGET_VERSION_FAMILY_LABEL" is set, will read a map out of
+  that for downgrade target.  The variable should be of the form
+  FAMILY:LABEL, for example "MYSTUDIO:JUNE2022".
+
+  Returns:
+      str: A json serialized string representation
+
+  Raises:
+      otio.exceptions.InvalidEnvironmentVariableError: if there is a problem
+      with the default environment variable
+      "OTIO_DEFAULT_TARGET_VERSION_FAMILY_LABEL".
+```
+  - input_otio
+  - target_schema_versions
+  - indent
+
+
+
+
+
+### otiod
+
+```
+OTIOD adapter - bundles otio files linked to local media in a directory
+
+Takes as input an OTIO file that has media references which are all
+ExternalReferences with target_urls to files with unique basenames that are
+accessible through the file system and bundles those files and the otio file
+into a single directory named with a suffix of .otiod.
+```
+
+*source*: `opentimelineio/adapters/otiod.py`
+
+
+*Supported Features (with arguments)*:
+
+- read_from_file:
+  - filepath
+  - absolute_media_reference_paths
 - write_to_file:
   - input_otio
   - filepath
+  - media_policy
+  - dryrun
+
+
+
+
+
+### otioz
+
+```
+OTIOZ adapter - bundles otio files linked to local media
+
+Takes as input an OTIO file that has media references which are all
+ExternalReferences with target_urls to files with unique basenames that are
+accessible through the file system and bundles those files and the otio file
+into a single zip file with the suffix .otioz.  Can error out if files aren't
+locally referenced or provide missing references
+
+Can also extract the content.otio file from an otioz bundle for processing.
+
+Note that OTIOZ files _always_ use the unix style path separator ('/'). This
+ensures that regardless of which platform a bundle was created on, it can be
+read on unix and windows platforms.
+```
+
+*source*: `opentimelineio/adapters/otioz.py`
+
+
+*Supported Features (with arguments)*:
+
+- read_from_file:
+  - filepath
+  - extract_to_directory
+- write_to_file:
+  - input_otio
+  - filepath
+  - media_policy
+  - dryrun
+
+
+
+
+
+### svg
+
+```
+OTIO to SVG Adapter
+Points in calculations are y-up.
+Points in SVG are y-down.
+```
+
+*source*: `opentimelineio/adapters/svg.py`
+
+
+*Supported Features (with arguments)*:
+
 - write_to_string:
   - input_otio
+  - width
+  - height
 
 
 
@@ -135,8 +287,7 @@ This adapter lets you read and write native .otio files
 Media Linkers run after the adapter has read in the file and convert the media
 references into valid references where appropriate.
 
-<a href="write-a-media-linker.html" target="_blank"> Tutorial on how to write a
-Media Linker</a>
+[Tutorial on how to write a Media Linker](write-a-media-linker).
 
 
 
@@ -144,8 +295,7 @@ Media Linker</a>
 
 SchemaDef plugins define new external schema.
 
-<a href="write-a-schemadef.html" target="_blank"> Tutorial on how to write a
-schemadef</a>
+[Tutorial on how to write a schemadef](write-a-schemadef).
 
 
 
@@ -153,8 +303,7 @@ schemadef</a>
 
 HookScripts are extra plugins that run on _hooks_.
 
-<a href="write-a-hookscript.html" target="_blank">Tutorial on how to write a
-hookscript.</a>
+[Tutorial on how to write a hookscript](write-a-hookscript).
 
 
 
@@ -178,11 +327,9 @@ Manifest path: `opentimelineio_contrib/adapters/contrib_adapters.plugin_manifest
 
 Adapter plugins convert to and from OpenTimelineIO.
 
-<a href="adapters.html" target="_blank"> Adapters documentation page for more
-information</a>
+[Adapters documentation page for more information](./adapters).
 
-<a href="write-an-adapter.html" target="_blank">Tutorial on how to write an
-adapter.</a>
+[Tutorial on how to write an adapter](write-an-adapter).
 
 
 ### AAF
@@ -200,8 +347,28 @@ Depending on if/where PyAAF is installed, you may need to set this env var:
 *Supported Features (with arguments)*:
 
 - read_from_file:
+```
+Reads AAF content from `filepath` and outputs an OTIO
+  timeline object.
+
+  Args:
+      filepath (str): AAF filepath
+      simplify (bool, optional): simplify timeline structure by stripping empty
+  items
+      transcribe_log (bool, optional): log activity as items are getting
+  transcribed
+      attach_markers (bool, optional): attaches markers to their appropriate items
+                                       like clip, gap. etc on the track
+      bake_keyframed_properties (bool, optional): bakes animated property values
+                                                  for each frame in a source clip
+  Returns:
+      otio.schema.Timeline
+```
   - filepath
   - simplify
+  - transcribe_log
+  - attach_markers
+  - bake_keyframed_properties
   - top_level_only
 - write_to_file:
   - input_otio
@@ -414,38 +581,6 @@ Adapter entry point for writing.
 
 
 
-### kdenlive
-
-```
-Kdenlive (MLT XML) Adapter.
-```
-
-*source*: `opentimelineio_contrib/adapters/kdenlive.py`
-
-
-*Supported Features (with arguments)*:
-
-- read_from_string: 
-```
-Read a Kdenlive project (MLT XML)
-  Kdenlive uses a given MLT project layout, similar to Shotcut,
-  combining a "main_bin" playlist to organize source media,
-  and a "global_feed" tractor for timeline.
-  (in Kdenlive 19.x, timeline tracks include virtual sub-track, unused for now)
-```
-  - input_str
-- write_to_string: 
-```
-Write a timeline to Kdenlive project
-  Re-creating the bin storing all used source clips
-  and constructing the tracks
-```
-  - input_otio
-
-
-
-
-
 ### maya_sequencer
 
 ```
@@ -467,29 +602,10 @@ Maya Sequencer Adapter Harness
 
 
 
-### rv_session
-
-```
-RvSession Adapter harness
-```
-
-*source*: `opentimelineio_contrib/adapters/rv.py`
-
-
-*Supported Features (with arguments)*:
-
-- write_to_file:
-  - input_otio
-  - filepath
-
-
-
-
-
 ### xges
 
 ```
-OpenTimelineIO GStreamer Editing Services XML Adapter. 
+OpenTimelineIO GStreamer Editing Services XML Adapter.
 ```
 
 *source*: `opentimelineio_contrib/adapters/xges.py`
@@ -529,8 +645,7 @@ Necessary write method for otio adapter
 Media Linkers run after the adapter has read in the file and convert the media
 references into valid references where appropriate.
 
-<a href="write-a-media-linker.html" target="_blank"> Tutorial on how to write a
-Media Linker</a>
+[Tutorial on how to write a Media Linker](write-a-media-linker).
 
 
 
@@ -538,14 +653,13 @@ Media Linker</a>
 
 SchemaDef plugins define new external schema.
 
-<a href="write-a-schemadef.html" target="_blank"> Tutorial on how to write a
-schemadef</a>
+[Tutorial on how to write a schemadef](write-a-schemadef).
 
 
 ### xges
 
 ```
-OpenTimelineIO GStreamer Editing Services XML Adapter. 
+OpenTimelineIO GStreamer Editing Services XML Adapter.
 ```
 
 *source*: `opentimelineio_contrib/adapters/xges.py`
@@ -553,6 +667,34 @@ OpenTimelineIO GStreamer Editing Services XML Adapter.
 
 *Serializable Classes*:
 
+- GESMarker:
+```
+An OpenTimelineIO Schema that is a timestamp with metadata,
+  essentially mimicking the GstMarker of the GES C libarary.
+```
+- GESMarkerList:
+```
+An OpenTimelineIO Schema that is a list of GESMarkers,
+  ordered by
+  their positions, essentially mimicking the GstMarkerList of the GES
+  C libarary.
+```
+- GstCaps:
+```
+An OpenTimelineIO Schema that acts as an ordered collection of
+  GstStructures, essentially mimicking the GstCaps of the Gstreamer C
+  libarary. Each GstStructure is linked to a GstCapsFeatures, which is
+  a list of features.
+
+  In particular, this schema mimics the gst_caps_to_string and
+  gst_caps_from_string C methods.
+```
+- GstCapsFeatures:
+```
+An OpenTimelineIO Schema that contains a collection of
+  features,
+  mimicking a GstCapsFeatures of the Gstreamer C libarary.
+```
 - GstStructure: 
 ```
 An OpenTimelineIO Schema that acts as a named dictionary with
@@ -584,6 +726,12 @@ An OpenTimelineIO Schema that acts as a named dictionary with
   string        str or None   str, s
   GstFraction   str or        fraction
                 Fraction
+  GstStructure  GstStructure  structure
+                schema
+  GstCaps       GstCaps
+                schema
+  GESMarkerList GESMarkerList
+                schema
 
   Note that other types can be given: these must be given as strings
   and the user will be responsible for making sure they are already in
@@ -603,8 +751,7 @@ An OpenTimelineIO Schema for storing a GESTrack.
 
 HookScripts are extra plugins that run on _hooks_.
 
-<a href="write-a-hookscript.html" target="_blank">Tutorial on how to write a
-hookscript.</a>
+[Tutorial on how to write a hookscript](write-a-hookscript).
 
 
 

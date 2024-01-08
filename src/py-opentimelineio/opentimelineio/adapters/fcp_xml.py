@@ -1,26 +1,5 @@
-#
-# Copyright 2017 Pixar Animation Studios
-#
-# Licensed under the Apache License, Version 2.0 (the "Apache License")
-# with the following modification; you may not use this file except in
-# compliance with the Apache License and the following modification to it:
-# Section 6. Trademarks. is deleted and replaced with:
-#
-# 6. Trademarks. This License does not grant permission to use the trade
-#    names, trademarks, service marks, or product names of the Licensor
-#    and its affiliates, except as required to comply with Section 4(c) of
-#    the License and to reproduce the content of the NOTICE file.
-#
-# You may obtain a copy of the Apache License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the Apache License with the above modification is
-# distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-# KIND, either express or implied. See the Apache License for the specific
-# language governing permissions and limitations under the Apache License.
-#
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Contributors to the OpenTimelineIO project
 
 """OpenTimelineIO Final Cut Pro 7 XML Adapter."""
 
@@ -33,22 +12,8 @@ import re
 from xml.etree import cElementTree
 from xml.dom import minidom
 
-# urlparse's name changes in Python 3
-try:
-    # Python 2.7
-    import urlparse as urllib_parse
-except ImportError:
-    # Python 3
-    basestring = str
-    import urllib.parse as urllib_parse
-
-# Same with the ABC classes from collections
-try:
-    # Python 3
-    from collections.abc import Mapping
-except ImportError:
-    # Python 2.7
-    from collections import Mapping
+import urllib.parse as urllib_parse
+from collections.abc import Mapping
 
 from .. import (
     core,
@@ -142,7 +107,7 @@ class _Context(Mapping):
         for context_element in self.elements:
             if context_element == element:
                 raise ValueError(
-                    "element {} already in context".format(element)
+                    f"element {element} already in context"
                 )
 
         return _Context(element, self.elements)
@@ -169,10 +134,10 @@ def _element_identification_string(element):
     Gets a string that will hopefully help in identifing an element when there
     is an error.
     """
-    info_string = "tag: {}".format(element.tag)
+    info_string = f"tag: {element.tag}"
     try:
         elem_id = element.attrib["id"]
-        info_string += " id: {}".format(elem_id)
+        info_string += f" id: {elem_id}"
     except KeyError:
         pass
 
@@ -181,35 +146,29 @@ def _element_identification_string(element):
 
 def _name_from_element(element):
     """
-    Fetches the name from the ``name`` element child of the provided element.
-    If no element exists, returns ``None``.
+    Fetches a name suitable for OTIO objects from the ``name`` element child
+    of the provided element.
+    If no element exists, returns empty string.
 
     :param element: The element to find the name for.
 
-    :return: The name string or ``None``
+    :return: The name string or and empty string
     """
     name_elem = element.find("./name")
     if name_elem is not None:
-        return name_elem.text
+        return name_elem.text if name_elem.text is not None else ""
 
-    return None
+    return ""
 
 
-def _rate_for_element(element):
+def _otio_rate(timebase, ntsc):
     """
-    Takes an FCP rate element and returns a rate to use with otio.
-
-    :param element: An FCP rate element.
-
-    :return: The float rate.
+    Given an FCP XML timebase and NTSC boolean, returns the float framerate.
     """
-    # rate is encoded as a timebase (int) which can be drop-frame
-    base = float(element.find("./timebase").text)
-    ntsc = element.find("./ntsc")
-    if ntsc is not None and _bool_value(ntsc):
-        base *= 1000.0 / 1001
+    if not ntsc:
+        return timebase
 
-    return base
+    return (timebase * 1000.0 / 1001)
 
 
 def _rate_from_context(context):
@@ -220,12 +179,16 @@ def _rate_from_context(context):
 
     :return: The rate value or ``None`` if no rate is available in the context.
     """
-    try:
-        rate_element = context["./rate"]
-    except KeyError:
+    timebase = context.get("./rate/timebase")
+    ntsc = context.get("./rate/ntsc")
+
+    if timebase is None:
         return None
 
-    return _rate_for_element(rate_element)
+    return _otio_rate(
+        float(timebase.text),
+        _bool_value(ntsc) if ntsc is not None else None,
+    )
 
 
 def _time_from_timecode_element(tc_element, context=None):
@@ -282,7 +245,7 @@ def _track_kind_from_element(media_element):
     elif element_tag == "video":
         return schema.TrackKind.Video
 
-    raise ValueError("Unsupported media kind: {}".format(media_element.tag))
+    raise ValueError(f"Unsupported media kind: {media_element.tag}")
 
 
 def _is_primary_audio_channel(track):
@@ -362,7 +325,7 @@ def _xml_tree_to_dict(node, ignore_tags=None, omit_timing=True):
     # Handle the attributes
     out_dict.update(
         collections.OrderedDict(
-            ("@{}".format(k), v) for k, v in node.attrib.items()
+            (f"@{k}", v) for k, v in node.attrib.items()
         )
     )
 
@@ -445,7 +408,7 @@ def _dict_to_xml_tree(data_dict, tag):
             pass
 
         # test for list-like objects (but not string-derived)
-        if not isinstance(python_value, basestring):
+        if not isinstance(python_value, str):
             try:
                 iter(python_value)
                 return itertools.chain.from_iterable(
@@ -584,9 +547,7 @@ class FCP7XMLParser:
         1. Inheritance
         2. The id Attribute
 
-    .. seealso:: https://developer.apple.com/library/archive/documentation/\
-            AppleApplications/Reference/FinalCutPro_XML/Basics/Basics.html\
-            #//apple_ref/doc/uid/TP30001154-TPXREF102
+    .. seealso:: https://developer.apple.com/library/archive/documentation/AppleApplications/Reference/FinalCutPro_XML/Basics/Basics.html#//apple_ref/doc/uid/TP30001154-TPXREF102 # noqa
 
     Inheritance is implemented using a _Context object that is pushed down
     through layers of parsing. A given parsing method is passed the element to
@@ -777,7 +738,7 @@ class FCP7XMLParser:
         """
         local_context = context.context_pushing_element(track_element)
         name_element = track_element.find("./name")
-        track_name = (name_element.text if name_element is not None else None)
+        track_name = (name_element.text if name_element is not None else '')
 
         timeline_item_tags = {"clipitem", "generatoritem", "transitionitem"}
 
@@ -853,7 +814,7 @@ class FCP7XMLParser:
         name = _name_from_element(file_element)
 
         # Get the full metadata
-        metadata_ignore_keys = {"duration", "name", "pathurl"}
+        metadata_ignore_keys = {"duration", "name", "pathurl", "mediaSource"}
         md_dict = _xml_tree_to_dict(file_element, metadata_ignore_keys)
         metadata_dict = {META_NAMESPACE: md_dict} if md_dict else None
 
@@ -864,10 +825,19 @@ class FCP7XMLParser:
         else:
             path = None
 
+        # Determine the mediasource
+        mediasource_element = file_element.find("./mediaSource")
+        if mediasource_element is not None:
+            mediasource = mediasource_element.text
+        else:
+            mediasource = None
+
         # Find the timing
         timecode_element = file_element.find("./timecode")
         if timecode_element is not None:
-            start_time = _time_from_timecode_element(timecode_element)
+            start_time = _time_from_timecode_element(
+                timecode_element, local_context
+            )
             start_time = start_time.rescaled_to(media_ref_rate)
         else:
             start_time = opentime.RationalTime(0, media_ref_rate)
@@ -886,19 +856,26 @@ class FCP7XMLParser:
         else:
             available_range = None
 
-        if path is None:
-            media_reference = schema.MissingReference(
-                name=name,
-                available_range=available_range,
-                metadata=metadata_dict,
-            )
-        else:
+        if path is not None:
             media_reference = schema.ExternalReference(
                 target_url=path,
                 available_range=available_range,
                 metadata=metadata_dict,
             )
             media_reference.name = name
+        elif mediasource is not None:
+            media_reference = schema.GeneratorReference(
+                name=name,
+                generator_kind=mediasource,
+                available_range=available_range,
+                metadata=metadata_dict,
+            )
+        else:
+            media_reference = schema.MissingReference(
+                name=name,
+                available_range=available_range,
+                metadata=metadata_dict,
+            )
 
         return media_reference
 
@@ -911,10 +888,16 @@ class FCP7XMLParser:
         :return: An :class: `schema.GeneratorReference` instance.
         """
         name = _name_from_element(effect_element)
-        md_dict = _xml_tree_to_dict(effect_element, {"name"})
+        md_dict = _xml_tree_to_dict(effect_element, {"name", "effectid"})
+
+        effectid_element = effect_element.find("./effectid")
+        generator_kind = (
+            effectid_element.text if effectid_element is not None else ""
+        )
 
         return schema.GeneratorReference(
             name=name,
+            generator_kind=generator_kind,
             metadata=({META_NAMESPACE: md_dict} if md_dict else None)
         )
 
@@ -993,7 +976,7 @@ class FCP7XMLParser:
         elif item_element.tag == "transitionitem":
             item = self.transition_for_element(item_element, context)
         else:
-            name = "unknown-{}".format(item_element.tag)
+            name = f"unknown-{item_element.tag}"
             item = core.Item(name=name, source_range=item_range)
 
         if metadata_dict:
@@ -1044,7 +1027,7 @@ class FCP7XMLParser:
                 timecode_element = file_element.find("./timecode")
                 if timecode_element is not None:
                     media_start_time = _time_from_timecode_element(
-                        timecode_element
+                        timecode_element, local_context
                     )
             elif generator_effect_element is not None:
                 media_reference = self.media_reference_for_effect_element(
@@ -1104,11 +1087,10 @@ class FCP7XMLParser:
 
         if effect_element is None:
             raise ValueError(
-                "could not find effect in filter: {}".format(filter_element)
+                f"could not find effect in filter: {filter_element}"
             )
 
-        name = effect_element.find("./name").text
-        name = name if name else "NameNotFound"
+        name = _name_from_element(effect_element)
 
         effect_metadata = _xml_tree_to_dict(effect_element, {"name"})
 
@@ -1139,7 +1121,7 @@ class FCP7XMLParser:
         cut_point = _transition_cut_point(item_element, context)
 
         transition = schema.Transition(
-            name=item_element.find('./effect/name').text,
+            name=_name_from_element(item_element.find('./effect')),
             transition_type=schema.TransitionTypes.SMPTE_Dissolve,
             in_offset=cut_point - start,
             out_offset=end - cut_point,
@@ -1176,7 +1158,7 @@ def _backreference_for_item(item, tag, br_map):
     # of hash to id int as values.
 
     def id_string(id_int):
-        return "{}-{}".format(tag, id_int)
+        return f"{tag}-{id_int}"
 
     # Determine how to uniquely identify the referenced item
     if isinstance(item, schema.ExternalReference):
@@ -1367,7 +1349,7 @@ def _build_timecode(time, fps, drop_frame=False, additional_metadata=None):
 
     frame_number = int(round(time.value))
     _append_new_sub_element(
-        tc_element, "frame", text="{:.0f}".format(frame_number)
+        tc_element, "frame", text=f"{frame_number:.0f}"
     )
 
     drop_frame = (";" in tc_string)
@@ -1394,8 +1376,8 @@ def _build_item_timings(
     source_end = (item.source_range.end_time_exclusive() - timecode)
     source_end = source_end.rescaled_to(item_rate)
 
-    start = '{:.0f}'.format(timeline_range.start_time.value)
-    end = '{:.0f}'.format(timeline_range.end_time_exclusive().value)
+    start = f'{timeline_range.start_time.value:.0f}'
+    end = f'{timeline_range.end_time_exclusive().value:.0f}'
 
     item_e.append(_build_rate(item_rate))
 
@@ -1408,19 +1390,19 @@ def _build_item_timings(
 
     _append_new_sub_element(
         item_e, 'duration',
-        text='{:.0f}'.format(item.source_range.duration.value)
+        text=f'{item.source_range.duration.value:.0f}'
     )
     _append_new_sub_element(item_e, 'start', text=start)
     _append_new_sub_element(item_e, 'end', text=end)
     _append_new_sub_element(
         item_e,
         'in',
-        text='{:.0f}'.format(source_start.value)
+        text=f'{source_start.value:.0f}'
     )
     _append_new_sub_element(
         item_e,
         'out',
-        text='{:.0f}'.format(source_end.value)
+        text=f'{source_end.value:.0f}'
     )
 
 
@@ -1447,7 +1429,7 @@ def _build_empty_file(media_ref, parent_range, br_map):
         _append_new_sub_element(
             file_e,
             'duration',
-            text='{:.0f}'.format(duration.value),
+            text=f'{duration.value:.0f}',
         )
 
     # timecode
@@ -1471,20 +1453,36 @@ def _build_file(media_reference, br_map):
     file_e = _element_with_item_metadata("file", media_reference)
 
     available_range = media_reference.available_range
-    url_path = _url_to_path(media_reference.target_url)
 
-    file_name = (
-        media_reference.name if media_reference.name
-        else os.path.basename(url_path)
+    # If the media reference is of one of the supported types, populate
+    # the appropriate source info element
+    if isinstance(media_reference, schema.ExternalReference):
+        _append_new_sub_element(
+            file_e, 'pathurl', text=media_reference.target_url
+        )
+        url_path = _url_to_path(media_reference.target_url)
+
+        fallback_file_name = (
+            media_reference.name if media_reference.name
+            else os.path.basename(url_path)
+        )
+    elif isinstance(media_reference, schema.GeneratorReference):
+        _append_new_sub_element(
+            file_e, 'mediaSource', text=media_reference.generator_kind
+        )
+        fallback_file_name = media_reference.generator_kind
+
+    _append_new_sub_element(
+        file_e,
+        'name',
+        text=(media_reference.name or fallback_file_name),
     )
-    _append_new_sub_element(file_e, 'name', text=file_name)
-    _append_new_sub_element(file_e, 'pathurl', text=media_reference.target_url)
 
     # timing info
     file_e.append(_build_rate(available_range.start_time.rate))
     _append_new_sub_element(
         file_e, 'duration',
-        text='{:.0f}'.format(available_range.duration.value)
+        text=f'{available_range.duration.value:.0f}'
     )
 
     # timecode
@@ -1528,12 +1526,12 @@ def _build_transition_item(
     _append_new_sub_element(
         transition_e,
         'start',
-        text='{:.0f}'.format(timeline_range.start_time.value)
+        text=f'{timeline_range.start_time.value:.0f}'
     )
     _append_new_sub_element(
         transition_e,
         'end',
-        text='{:.0f}'.format(timeline_range.end_time_exclusive().value)
+        text=f'{timeline_range.end_time_exclusive().value:.0f}'
     )
 
     # Only add an alignment if it didn't already come in from the metadata dict
@@ -1607,16 +1605,41 @@ def _build_clip_item_without_media(
 
 @_backreference_build("clipitem")
 def _build_clip_item(clip_item, timeline_range, transition_offsets, br_map):
+    # This is some wacky logic, but here's why:
+    # Pretty much any generator from Premiere just reports as being a clip that
+    # uses Slug as mediaSource rather than a pathurl (color matte seems to be
+    # the exception). I think this is becasue it is aiming to roundtrip effects
+    # with itself rather than try to make them backward compatable with FCP 7.
+    # This allows Premiere generators to still come in as slugs and still exist
+    # as placeholders for effects that may not have a true analog in FCP 7.
+    # Since OTIO does not yet interpret these generators into specific
+    # first-class schema objects (e.x. color matte, bars, etc.), the
+    # "artificial" mediaSources on clipitem and generatoritem both interpret as
+    # generator references. So, for the moment, to detect if likely have the
+    # metadata to make an fcp 7 style generatoritem we look for the effecttype
+    # field, if that is missing we write the generator using mediaSource in the
+    # Premiere Pro style.
+    # This adapter is currently built to effectively round-trip and let savvy
+    # users push the correct data into the metadata dictionary to drive
+    # behavior, but in the future when there are specific generator schema in
+    # otio we could  correctly translate a first-class OTIO generator concept
+    # into an equivalent FCP 7 generatoritem or a Premiere Pro style overloaded
+    # clipitem.
     is_generator = isinstance(
         clip_item.media_reference, schema.GeneratorReference
     )
 
-    tagname = "generatoritem" if is_generator else "clipitem"
+    media_ref_fcp_md = clip_item.media_reference.metadata.get('fcp_xml', {})
+    is_generatoritem = (
+        is_generator and 'effecttype' in media_ref_fcp_md
+    )
+
+    tagname = "generatoritem" if is_generatoritem else "clipitem"
     clip_item_e = _element_with_item_metadata(tagname, clip_item)
     if "frameBlend" not in clip_item_e.attrib:
         clip_item_e.attrib["frameBlend"] = "FALSE"
 
-    if is_generator:
+    if is_generatoritem:
         clip_item_e.append(_build_generator_effect(clip_item, br_map))
     else:
         clip_item_e.append(_build_file(clip_item.media_reference, br_map))
@@ -1680,7 +1703,7 @@ def _build_generator_effect(clip_item, br_map):
     effect_element = _dict_to_xml_tree(fcp_xml_effect_info, "effect")
 
     # Validate the metadata and make sure it contains the required elements
-    for required in ("effectid", "effecttype", "mediatype", "effectcategory"):
+    for required in ("effecttype", "mediatype", "effectcategory"):
         if effect_element.find(required) is None:
             return _build_empty_file(
                 generator_ref,
@@ -1690,6 +1713,9 @@ def _build_generator_effect(clip_item, br_map):
 
     # Add the name
     _append_new_sub_element(effect_element, "name", text=generator_ref.name)
+    _append_new_sub_element(
+        effect_element, "effectid", text=generator_ref.generator_kind
+    )
 
     return effect_element
 
@@ -1804,9 +1830,14 @@ def _build_marker(marker):
     _append_new_sub_element(marker_e, 'name', text=marker.name)
     _append_new_sub_element(
         marker_e, 'in',
-        text='{:.0f}'.format(marked_range.start_time.value)
+        text=f'{marked_range.start_time.value:.0f}'
     )
-    _append_new_sub_element(marker_e, 'out', text='-1')
+    _append_new_sub_element(
+        marker_e, 'out',
+        text='{:.0f}'.format(
+            marked_range.start_time.value + marked_range.duration.value
+        )
+    )
 
     return marker_e
 
@@ -1826,9 +1857,10 @@ def _build_timecode_from_metadata(time, tc_metadata=None):
         tc_metadata = {}
 
     try:
+
         # Parse the rate in the preserved metadata, if available
-        tc_rate = _rate_for_element(
-            _dict_to_xml_tree(tc_metadata["rate"], "rate")
+        tc_rate = _otio_rate(
+            tc_metadata["timebase"], _bool_value(tc_metadata["ntsc"])
         )
     except KeyError:
         # Default to the rate in the start time
@@ -1883,7 +1915,7 @@ def _add_stack_elements_to_sequence(stack, sequence_e, timeline_range, br_map):
     _append_new_sub_element(sequence_e, 'name', text=stack.name)
     _append_new_sub_element(
         sequence_e, 'duration',
-        text='{:.0f}'.format(timeline_range.duration.value)
+        text=f'{timeline_range.duration.value:.0f}'
     )
     sequence_e.append(_build_rate(timeline_range.start_time.rate))
     track_rate = timeline_range.start_time.rate
@@ -1891,6 +1923,10 @@ def _add_stack_elements_to_sequence(stack, sequence_e, timeline_range, br_map):
     media_e = _get_or_create_subelement(sequence_e, "media")
     video_e = _get_or_create_subelement(media_e, 'video')
     audio_e = _get_or_create_subelement(media_e, 'audio')
+
+    # This is a fix for Davinci Resolve. After the "video" tag, it expects
+    # a <format> tag, even if empty. See issue 839
+    _get_or_create_subelement(video_e, "format")
 
     # XXX: Due to the way that backreferences are created later on, the XML
     #      is assumed to have its video tracks serialized before its audio

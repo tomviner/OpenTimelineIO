@@ -1,26 +1,5 @@
-#
-# Copyright 2017 Pixar Animation Studios
-#
-# Licensed under the Apache License, Version 2.0 (the "Apache License")
-# with the following modification; you may not use this file except in
-# compliance with the Apache License and the following modification to it:
-# Section 6. Trademarks. is deleted and replaced with:
-#
-# 6. Trademarks. This License does not grant permission to use the trade
-#    names, trademarks, service marks, or product names of the Licensor
-#    and its affiliates, except as required to comply with Section 4(c) of
-#    the License and to reproduce the content of the NOTICE file.
-#
-# You may obtain a copy of the Apache License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the Apache License with the above modification is
-# distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-# KIND, either express or implied. See the Apache License for the specific
-# language governing permissions and limitations under the Apache License.
-#
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Contributors to the OpenTimelineIO project
 
 """Algorithms for track objects."""
 
@@ -34,12 +13,22 @@ from .. import (
 
 
 def track_trimmed_to_range(in_track, trim_range):
-    """Returns a new track that is a copy of the in_track, but with items
+    """
+    Returns a new track that is a copy of the in_track, but with items
     outside the trim_range removed and items on the ends trimmed to the
-    trim_range. Note that the track is never expanded, only shortened.
+    trim_range.
+
+    .. note:: The track is never expanded, only shortened.
+
     Please note that you could do nearly the same thing non-destructively by
-    just setting the Track's source_range but sometimes you want to really cut
-    away the stuff outside and that's what this function is meant for."""
+    just setting the :py:class:`.Track`\'s source_range but sometimes you want
+    to really cut away the stuff outside and that's what this function is meant for.
+
+    :param Track in_track: Track to trim
+    :param TimeRange trim_range:
+    :returns: New trimmed track
+    :rtype: Track
+    """
     new_track = copy.deepcopy(in_track)
 
     track_map = new_track.range_of_all_children()
@@ -47,7 +36,7 @@ def track_trimmed_to_range(in_track, trim_range):
     # iterate backwards so we can delete items
     for c, child in reversed(list(enumerate(new_track))):
         child_range = track_map[child]
-        if not trim_range.overlaps(child_range):
+        if not trim_range.intersects(child_range):
             # completely outside the trim range, so we discard it
             del new_track[c]
         elif trim_range.contains(child_range):
@@ -92,14 +81,22 @@ def track_with_expanded_transitions(in_track):
     """Expands transitions such that neighboring clips are trimmed into
     regions of overlap.
 
-    For example, if your track is:
+    For example, if your track is::
+
         Clip1, T, Clip2
 
-    will return:
-        Clip1', Clip1_t, T, Clip2_t, Clip2'
+    will return::
 
-    Where Clip1' is the part of Clip1 not in the transition, Clip1_t is the
+        Clip1', (Clip1_t, T, Clip2_t), Clip2'
+
+    Where ``Clip1'`` is the part of ``Clip1`` not in the transition, ``Clip1_t`` is the
     part inside the transition and so on.
+
+    .. note:: The items used in a transition are encapsulated in tuples.
+
+    :param Track in_track: Track to expand
+    :returns: Track
+    :rtype: list[Track]
     """
 
     result_track = []
@@ -165,12 +162,12 @@ def _expand_transition(target_transition, from_track):
         )
     if target_transition.in_offset is None:
         raise RuntimeError(
-            "in_offset is None on: {}".format(target_transition)
+            f"in_offset is None on: {target_transition}"
         )
 
     if target_transition.out_offset is None:
         raise RuntimeError(
-            "out_offset is None on: {}".format(target_transition)
+            f"out_offset is None on: {target_transition}"
         )
 
     pre.name = (pre.name or "") + "_transition_pre"

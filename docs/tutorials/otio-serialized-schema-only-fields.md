@@ -25,7 +25,6 @@ changes.  If it needs to be updated and this file regenerated, run:
 ### Adapter.1
 
 parameters:
-- *execution_scope*
 - *filepath*
 - *name*
 - *suffixes*
@@ -42,6 +41,7 @@ parameters:
 
 parameters:
 - *effects*
+- *enabled*
 - *markers*
 - *metadata*
 - *name*
@@ -51,6 +51,7 @@ parameters:
 
 parameters:
 - *effects*
+- *enabled*
 - *markers*
 - *metadata*
 - *name*
@@ -59,6 +60,7 @@ parameters:
 ### MediaReference.1
 
 parameters:
+- *available_image_bounds*
 - *available_range*
 - *metadata*
 - *name*
@@ -74,7 +76,6 @@ parameters:
 ### HookScript.1
 
 parameters:
-- *execution_scope*
 - *filepath*
 - *name*
 
@@ -83,7 +84,6 @@ parameters:
 ### MediaLinker.1
 
 parameters:
-- *execution_scope*
 - *filepath*
 - *name*
 
@@ -118,22 +118,24 @@ parameters:
 - *hooks*
 - *media_linkers*
 - *schemadefs*
+- *version_manifests*
 
 ### SerializableObject.1
 
 parameters:
-- *execution_scope*
 - *filepath*
 - *name*
 
 ## Module: opentimelineio.schema
 
-### Clip.1
+### Clip.2
 
 parameters:
+- *active_media_reference_key*
 - *effects*
+- *enabled*
 - *markers*
-- *media_reference*
+- *media_references*
 - *metadata*
 - *name*
 - *source_range*
@@ -148,6 +150,7 @@ parameters:
 ### ExternalReference.1
 
 parameters:
+- *available_image_bounds*
 - *available_range*
 - *metadata*
 - *name*
@@ -165,6 +168,7 @@ parameters:
 
 parameters:
 - *effects*
+- *enabled*
 - *markers*
 - *metadata*
 - *name*
@@ -173,11 +177,28 @@ parameters:
 ### GeneratorReference.1
 
 parameters:
+- *available_image_bounds*
 - *available_range*
 - *generator_kind*
 - *metadata*
 - *name*
 - *parameters*
+
+### ImageSequenceReference.1
+
+parameters:
+- *available_image_bounds*
+- *available_range*
+- *frame_step*
+- *frame_zero_padding*
+- *metadata*
+- *missing_frame_policy*
+- *name*
+- *name_prefix*
+- *name_suffix*
+- *rate*
+- *start_frame*
+- *target_url_base*
 
 ### LinearTimeWarp.1
 
@@ -198,6 +219,7 @@ parameters:
 ### MissingReference.1
 
 parameters:
+- *available_image_bounds*
 - *available_range*
 - *metadata*
 - *name*
@@ -212,6 +234,7 @@ parameters:
 
 parameters:
 - *effects*
+- *enabled*
 - *markers*
 - *metadata*
 - *name*
@@ -236,6 +259,7 @@ parameters:
 
 parameters:
 - *effects*
+- *enabled*
 - *kind*
 - *markers*
 - *metadata*
@@ -254,6 +278,5 @@ parameters:
 ### SchemaDef.1
 
 parameters:
-- *execution_scope*
 - *filepath*
 - *name*

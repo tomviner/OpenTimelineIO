@@ -35,32 +35,33 @@ The in-memory OTIO representation data model is rooted at an `otio.schema.Timeli
 - `otio.schema.Track`
 - `otio.schema.Transition`
 
-The `otio.schema.Clip` objects can reference media through a `otio.media_reference.External` or indicate that they are missing a reference to real media with a `otio.media_reference.MissingReference`.  All objects have a metadata dictionary for blind data.
+The `otio.schema.Clip` objects can reference media through a `otio.schema.ExternalReference` or indicate that they are missing a reference to real media with a `otio.schema.MissingReference`.  All objects have a metadata dictionary for blind data.
 
 Schema composition objects (`otio.schema.Stack` and `otio.schema.Track`) implement the python mutable sequence API.  A simple script that prints out each shot might look like:
 
-```
+
+```python
 import opentimelineio as otio
 
 # read the timeline into memory
 tl = otio.adapters.read_from_file("my_file.otio")
 
 for each_seq in tl.tracks:
-  for each_item in each_seq:
-   if isinstance(each_item, otio.schema.Clip):
-    print each_item.media_reference
+    for each_item in each_seq:
+        if isinstance(each_item, otio.schema.Clip):
+            print each_item.media_reference
 ```
 
-or, in the case of any nested composition, like this:
+Or, in the case of a nested composition, like this:
 
-```
+```python
 import opentimelineio as otio
 
 # read the timeline into memory
 tl = otio.adapters.read_from_file("my_file.otio")
 
 for clip in tl.each_clip():
-  print clip.media_reference
+    print clip.media_reference
 ```
 
 ## Time on otio.schema.Clip
@@ -71,14 +72,16 @@ A clip may set its timing information (which is used to compute its `duration()`
 - `source_range`
  The range of media that is cut into the sequence, in the space of the available range (if it is set). In other words, it further truncates the available_range.
 
-A clip must have at least one set or else its duration is not computable.
-```
+A clip must have at least one set or else its duration is not computable:
+
+```python
 cl.duration()
-CannotComputeAvailableRangeError: No available_range set on media reference on clip: Clip("example", External("file:///example.mov"), None, {})
+# raises: opentimelineio._otio.CannotComputeAvailableRangeError: Cannot compute available range: No available_range set on media reference on clip: Clip("", ExternalReference("file:///example.mov"), None, {})
 ```
 
 You may query the `available_range` and `trimmed_range` via accessors on the `Clip()` itself, for example:
-```
+
+```python
 cl.trimmed_range()
 cl.available_range() # == cl.media_reference.available_range
 ```
@@ -106,7 +109,7 @@ A range in time.  Encodes the start time and the duration, meaning that end_time
 
 OpenTimelineIO includes several adapters for reading and writing from other file formats. The `otio.adapters` module has convenience functions that will auto-detect which adapter to use, or you can specify the one you want.
 
-Adapters can be added to the system (outside of the distribution) via JSON files that can be placed on the `OTIO_PLUGIN_MANIFEST_PATH` environment variable to be made available to OTIO.
+Adapters can be added to the system (outside of the distribution) via JSON files that can be placed on the {term}`OTIO_PLUGIN_MANIFEST_PATH` environment variable to be made available to OTIO.
 
 Most common usage only cares about:
 - `timeline = otio.adapters.read_from_file(filepath)`
@@ -116,19 +119,19 @@ Most common usage only cares about:
 
 The native format serialization (`.otio` files) is handled via the "otio_json" adapter, `otio.adapters.otio_json`.
 
-In most cases you don't need to worry about adapter names, just use `otio.adapters.read_from_file` and `otio.adapters.write_to_file` and it will figure out which one to use based on the filename extension.
+In most cases you don't need to worry about adapter names, just use `otio.adapters.read_from_file()` and `otio.adapters.write_to_file` and it will figure out which one to use based on the filename extension.
 
-For more information, see <a href="write-an-adapter.html" target="_blank">How To Write An OpenTimelineIO Adapter</a>
+For more information, see [How To Write An OpenTimelineIO Adapter](write-an-adapter).
 
 ## otio.media_linkers
 
-Media linkers run on the otio file after an adapter calls `.read_from_file` or `.read_from_string`.  They are intended to replace media references that exist after the adapter runs (which depending on the adapter are likely to be `MissingReference`) with ones that point to valid files in the local system.  Since media linkers are plugins, they can use proprietary knowledge or context and do not need to be part of OTIO itself.
+Media linkers run on the otio file after an adapter calls `.read_from_file()` or `.read_from_string()`.  They are intended to replace media references that exist after the adapter runs (which depending on the adapter are likely to be `MissingReference`) with ones that point to valid files in the local system.  Since media linkers are plugins, they can use proprietary knowledge or context and do not need to be part of OTIO itself.
 
-You may also specify a media linker to be run after the adapter, either via the `media_linker_name` argument to `.read_from_file` or `.read_from_string` or via the `OTIO_DEFAULT_MEDIA_LINKER` environment variable.  You can also turn the media linker off completely by setting the `media_linker_name` argument to `otio.media_linker.MediaLinkingPolicy.DoNotLinkMedia`.
+You may also specify a media linker to be run after the adapter, either via the `media_linker_name` argument to `.read_from_file()` or `.read_from_string()` or via the {term}`OTIO_DEFAULT_MEDIA_LINKER` environment variable.  You can also turn the media linker off completely by setting the `media_linker_name` argument to `otio.media_linker.MediaLinkingPolicy.DoNotLinkMedia`.
 
-For more information about writing media linkers, see <a href="write-a-media-linker.html" target="_blank">How To Write An OpenTimelineIO Media Linker</a>
+For more information about writing media linkers, see [How To Write An OpenTimelineIO Media Linker](write-a-media-linker).
 
 Example Scripts
 ----------------
 
-Example scripts are located in the <a href="https://github.com/PixarAnimationStudios/OpenTimelineIO/tree/master/examples" target="_blank">examples subdirectory</a>.
+Example scripts are located in the [examples subdirectory](https://github.com/AcademySoftwareFoundation/OpenTimelineIO/tree/main/examples).

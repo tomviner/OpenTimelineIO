@@ -1,26 +1,5 @@
-#
-# Copyright 2017 Pixar Animation Studios
-#
-# Licensed under the Apache License, Version 2.0 (the "Apache License")
-# with the following modification; you may not use this file except in
-# compliance with the Apache License and the following modification to it:
-# Section 6. Trademarks. is deleted and replaced with:
-#
-# 6. Trademarks. This License does not grant permission to use the trade
-#    names, trademarks, service marks, or product names of the Licensor
-#    and its affiliates, except as required to comply with Section 4(c) of
-#    the License and to reproduce the content of the NOTICE file.
-#
-# You may obtain a copy of the Apache License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the Apache License with the above modification is
-# distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-# KIND, either express or implied. See the Apache License for the specific
-# language governing permissions and limitations under the Apache License.
-#
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Contributors to the OpenTimelineIO project
 
 """Test final cut pro xml."""
 
@@ -41,12 +20,16 @@ from opentimelineio import (
 SAMPLE_DATA_DIR = os.path.join(os.path.dirname(__file__), "sample_data")
 FCP7_XML_EXAMPLE_PATH = os.path.join(SAMPLE_DATA_DIR, "premiere_example.xml")
 SIMPLE_XML_PATH = os.path.join(SAMPLE_DATA_DIR, "sample_just_track.xml")
+EMPTY_ELEMENT_XML_PATH = os.path.join(SAMPLE_DATA_DIR, "empty_name_tags.xml")
 HIERO_XML_PATH = os.path.join(SAMPLE_DATA_DIR, "hiero_xml_export.xml")
 FILTER_XML_EXAMPLE_PATH = os.path.join(
     SAMPLE_DATA_DIR, "premiere_example_filter.xml"
 )
 FILTER_JSON_EXAMPLE_PATH = os.path.join(
     SAMPLE_DATA_DIR, "premiere_example_filter.json"
+)
+GENERATOR_XML_EXAMPLE_PATH = os.path.join(
+    SAMPLE_DATA_DIR, "premiere_generators.xml"
 )
 
 
@@ -171,69 +154,95 @@ class TestFcp7XmlUtilities(unittest.TestCase, test_utils.OTIOAssertions):
 
         empty_element = cElementTree.fromstring("<sequence></sequence>")
         empty_name = self.adapter._name_from_element(empty_element)
-        self.assertIsNone(empty_name)
+        self.assertEqual(empty_name, "")
+
+        empty_name_element = cElementTree.fromstring(
+            "<sequence><name></name></sequence>"
+        )
+        empty_name_2 = self.adapter._name_from_element(empty_name_element)
+        self.assertEqual(empty_name_2, "")
 
     def test_rate_for_element_ntsc_conversion_23976(self):
         rate_element = cElementTree.fromstring(
             """
-            <rate>
-                <timebase>24</timebase>
-                <ntsc>TRUE</ntsc>
-            </rate>
+            <clipitem>
+                <rate>
+                    <timebase>24</timebase>
+                    <ntsc>TRUE</ntsc>
+                </rate>
+            </clipitem>
             """
         )
-        rate = self.adapter._rate_for_element(rate_element)
+        rate = self.adapter._rate_from_context(
+            self.adapter._Context(rate_element)
+        )
 
         self.assertEqual(rate, (24000 / 1001.0))
 
     def test_rate_for_element_ntsc_conversion_24(self):
         rate_element = cElementTree.fromstring(
             """
-            <rate>
-                <timebase>24</timebase>
-                <ntsc>FALSE</ntsc>
-            </rate>
+            <clipitem>
+                <rate>
+                    <timebase>24</timebase>
+                    <ntsc>FALSE</ntsc>
+                </rate>
+            </clipitem>
             """
         )
-        rate = self.adapter._rate_for_element(rate_element)
+        rate = self.adapter._rate_from_context(
+            self.adapter._Context(rate_element)
+        )
 
         self.assertEqual(rate, 24)
 
     def test_rate_for_element_ntsc_conversion_2997(self):
         rate_element = cElementTree.fromstring(
             """
-            <rate>
-                <timebase>30</timebase>
-                <ntsc>TRUE</ntsc>
-            </rate>
+            <clipitem>
+                <rate>
+                    <timebase>30</timebase>
+                    <ntsc>TRUE</ntsc>
+                </rate>
+            </clipitem>
             """
         )
-        rate = self.adapter._rate_for_element(rate_element)
+        rate = self.adapter._rate_from_context(
+            self.adapter._Context(rate_element)
+        )
 
         self.assertEqual(rate, (30000 / 1001.0))
 
     def test_rate_for_element_ntsc_conversion_30(self):
         rate_element = cElementTree.fromstring(
             """
-            <rate>
-                <timebase>30</timebase>
-                <ntsc>FALSE</ntsc>
-            </rate>
+            <clipitem>
+                <rate>
+                    <timebase>30</timebase>
+                    <ntsc>FALSE</ntsc>
+                </rate>
+            </clipitem>
             """
         )
-        rate = self.adapter._rate_for_element(rate_element)
+        rate = self.adapter._rate_from_context(
+            self.adapter._Context(rate_element)
+        )
 
         self.assertEqual(rate, 30)
 
     def test_rate_for_element_no_ntsc(self):
         rate_element = cElementTree.fromstring(
             """
-            <rate>
-                <timebase>30</timebase>
-            </rate>
+            <clipitem>
+                <rate>
+                    <timebase>30</timebase>
+                </rate>
+            </clipitem>
             """
         )
-        rate = self.adapter._rate_for_element(rate_element)
+        rate = self.adapter._rate_from_context(
+            self.adapter._Context(rate_element)
+        )
 
         self.assertEqual(rate, 30)
 
@@ -340,6 +349,45 @@ class TestFcp7XmlUtilities(unittest.TestCase, test_utils.OTIOAssertions):
         self.assertEqual(
             time, opentime.RationalTime(107892, (30000 / 1001.0))
         )
+
+    def test_time_from_timecode_element_implicit_ntsc(self):
+        clipitem_element = cElementTree.fromstring(
+            """
+            <clipitem>
+              <duration>767</duration>
+              <rate>
+                <ntsc>TRUE</ntsc>
+                <timebase>24</timebase>
+              </rate>
+              <in>447</in>
+              <out>477</out>
+              <start>264</start>
+              <end>294</end>
+              <file>
+                <rate>
+                  <timebase>24</timebase>
+                  <ntsc>TRUE</ntsc>
+                </rate>
+                <duration>767</duration>
+                <timecode>
+                  <rate>
+                    <timebase>24</timebase>
+                  </rate>
+                  <string>14:11:44:09</string>
+                  <frame>1226505</frame>
+                  <displayformat>NDF</displayformat>
+                  <source>source</source>
+                </timecode>
+              </file>
+            </clipitem>
+            """
+        )
+        context = self.adapter._Context(clipitem_element)
+        timecode_element = clipitem_element.find("./file/timecode")
+        time = self.adapter._time_from_timecode_element(
+            timecode_element, context
+        )
+        self.assertEqual(time, opentime.RationalTime(1226505, 24000.0 / 1001))
 
     def test_track_kind_from_element(self):
         video_element = cElementTree.fromstring("<video/>")
@@ -883,7 +931,7 @@ class AdaptersFcp7XmlTest(unittest.TestCase, test_utils.OTIOAssertions):
     adapter = adapters.from_name('fcp_xml').module()
 
     def __init__(self, *args, **kwargs):
-        super(AdaptersFcp7XmlTest, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.maxDiff = None
 
     def test_build_empty_file(self):
@@ -1097,9 +1145,9 @@ class AdaptersFcp7XmlTest(unittest.TestCase, test_utils.OTIOAssertions):
         audio_reference.name = "test_wav_one"
         generator_reference = schema.GeneratorReference(
             name="Color",
+            generator_kind="Color",
             metadata={
                 "fcp_xml": {
-                    "effectid": "Color",
                     "effectcategory": "Matte",
                     "effecttype": "generator",
                     "mediatype": "video",
@@ -1118,12 +1166,12 @@ class AdaptersFcp7XmlTest(unittest.TestCase, test_utils.OTIOAssertions):
             },
         )
 
-        v0 = schema.Track(kind=schema.track.TrackKind.Video)
-        v1 = schema.Track(kind=schema.track.TrackKind.Video)
+        v0 = schema.Track(kind=schema.TrackKind.Video)
+        v1 = schema.Track(kind=schema.TrackKind.Video)
 
         timeline.tracks.extend([v0, v1])
 
-        a0 = schema.Track(kind=schema.track.TrackKind.Audio)
+        a0 = schema.Track(kind=schema.TrackKind.Audio)
 
         timeline.tracks.append(a0)
 
@@ -1208,11 +1256,33 @@ class AdaptersFcp7XmlTest(unittest.TestCase, test_utils.OTIOAssertions):
             )
         )
 
+        timeline.tracks.markers.append(
+            schema.Marker(
+                name='test_timeline_marker_range',
+                marked_range=opentime.TimeRange(
+                    opentime.RationalTime(123, RATE),
+                    opentime.RationalTime(11, RATE),
+                ),
+                metadata={'fcp_xml': {'comment': 'my_comment'}}
+            )
+        )
+
         v1[1].markers.append(
             schema.Marker(
                 name='test_clip_marker',
                 marked_range=opentime.TimeRange(
                     opentime.RationalTime(125, RATE)
+                ),
+                metadata={'fcp_xml': {'comment': 'my_comment'}}
+            )
+        )
+
+        v1[1].markers.append(
+            schema.Marker(
+                name='test_clip_marker_range',
+                marked_range=opentime.TimeRange(
+                    opentime.RationalTime(125, RATE),
+                    opentime.RationalTime(6, RATE)
                 ),
                 metadata={'fcp_xml': {'comment': 'my_comment'}}
             )
@@ -1239,10 +1309,10 @@ class AdaptersFcp7XmlTest(unittest.TestCase, test_utils.OTIOAssertions):
         # Before comparing, scrub ignorable metadata introduced in
         # serialization (things like unique ids minted by the adapter)
         # Since we seeded metadata for the generator, keep that metadata
-        del(new_timeline.metadata["fcp_xml"])
-        for child in new_timeline.tracks.each_child():
+        del new_timeline.metadata["fcp_xml"]
+        for child in new_timeline.tracks.find_children():
             try:
-                del(child.metadata["fcp_xml"])
+                del child.metadata["fcp_xml"]
             except KeyError:
                 pass
 
@@ -1251,7 +1321,7 @@ class AdaptersFcp7XmlTest(unittest.TestCase, test_utils.OTIOAssertions):
                     child.media_reference, schema.GeneratorReference
                 )
                 if not is_generator:
-                    del(child.media_reference.metadata["fcp_xml"])
+                    del child.media_reference.metadata["fcp_xml"]
             except (AttributeError, KeyError):
                 pass
 
@@ -1275,7 +1345,7 @@ class AdaptersFcp7XmlTest(unittest.TestCase, test_utils.OTIOAssertions):
             def scrub_displayformat(md_dict):
                 for ignore_key in {"link"}:
                     try:
-                        del(md_dict[ignore_key])
+                        del md_dict[ignore_key]
                     except KeyError:
                         pass
 
@@ -1286,7 +1356,7 @@ class AdaptersFcp7XmlTest(unittest.TestCase, test_utils.OTIOAssertions):
                     except AttributeError:
                         pass
 
-            for child in timeline.tracks.each_child():
+            for child in timeline.tracks.find_children():
                 scrub_displayformat(child.metadata)
                 try:
                     scrub_displayformat(child.media_reference.metadata)
@@ -1307,8 +1377,8 @@ class AdaptersFcp7XmlTest(unittest.TestCase, test_utils.OTIOAssertions):
 
         # But the xml text on disk is not identical because otio has a subset
         # of features to xml and we drop all the nle specific preferences.
-        with open(FCP7_XML_EXAMPLE_PATH, "r") as original_file:
-            with open(tmp_path, "r") as output_file:
+        with open(FCP7_XML_EXAMPLE_PATH) as original_file:
+            with open(tmp_path) as output_file:
                 self.assertNotEqual(original_file.read(), output_file.read())
 
     def test_hiero_flavored_xml(self):
@@ -1316,7 +1386,7 @@ class AdaptersFcp7XmlTest(unittest.TestCase, test_utils.OTIOAssertions):
         self.assertTrue(len(timeline.tracks), 1)
         self.assertTrue(timeline.tracks[0].name == 'Video 1')
 
-        clips = [c for c in timeline.tracks[0].each_clip()]
+        clips = [c for c in timeline.tracks[0].find_clips()]
         self.assertTrue(len(clips), 2)
 
         self.assertTrue(clips[0].name == 'A160C005_171213_R0MN')
@@ -1363,9 +1433,46 @@ class AdaptersFcp7XmlTest(unittest.TestCase, test_utils.OTIOAssertions):
 
         # Similar to the test_roundtrip_disk2mem2disk above
         # the track name element among others will not be present in a new xml.
-        with open(HIERO_XML_PATH, "r") as original_file:
-            with open(tmp_path, "r") as output_file:
+        with open(HIERO_XML_PATH) as original_file:
+            with open(tmp_path) as output_file:
                 self.assertNotEqual(original_file.read(), output_file.read())
+
+    def test_xml_with_empty_elements(self):
+        timeline = adapters.read_from_file(EMPTY_ELEMENT_XML_PATH)
+
+        # Spot-check the EDL, this one would throw exception on load before
+        self.assertEqual(len(timeline.video_tracks()), 12)
+        self.assertEqual(len(timeline.video_tracks()[0]), 34)
+
+    def test_read_generators(self):
+        timeline = adapters.read_from_file(GENERATOR_XML_EXAMPLE_PATH)
+
+        video_track = timeline.tracks[0]
+        audio_track = timeline.tracks[3]
+        self.assertEqual(len(video_track), 6)
+        self.assertEqual(len(audio_track), 3)
+
+        # Check all video items are generators
+        self.assertTrue(
+            all(
+                isinstance(item.media_reference, schema.GeneratorReference)
+                for item in video_track
+            )
+        )
+
+        # Check the video generator kinds
+        self.assertEqual(
+            [clip.media_reference.generator_kind for clip in video_track],
+            ["Slug", "Slug", "Color", "Slug", "Slug", "GraphicAndType"],
+        )
+
+        # Check all non-gap audio items are generators
+        self.assertTrue(
+            all(
+                isinstance(item.media_reference, schema.GeneratorReference)
+                for item in video_track if not isinstance(item, schema.Gap)
+            )
+        )
 
 
 if __name__ == '__main__':

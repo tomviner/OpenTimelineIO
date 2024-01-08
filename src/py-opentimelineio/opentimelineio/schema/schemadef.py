@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Contributors to the OpenTimelineIO project
+
 import inspect
 import collections
 
@@ -16,17 +19,17 @@ class SchemaDef(plugins.PythonPlugin):
     def __init__(
         self,
         name=None,
-        execution_scope=None,
         filepath=None,
     ):
-        plugins.PythonPlugin.__init__(self, name, execution_scope, filepath)
+        plugins.PythonPlugin.__init__(self, name, filepath)
 
     def module(self):
         """
         Return the module object for this schemadef plugin.
         If the module hasn't already been imported, it is imported and
         injected into the otio.schemadefs namespace as a side-effect.
-        (redefines PythonPlugin.module())
+
+        Redefines :py:meth:`.PythonPlugin.module`.
         """
 
         if not self._module:
@@ -40,7 +43,7 @@ class SchemaDef(plugins.PythonPlugin):
         """Adds extra schemadef-specific information to call to the parent fn.
         """
 
-        result = super(SchemaDef, self).plugin_info_map()
+        result = super().plugin_info_map()
 
         features = collections.OrderedDict()
         for name in dir(self.module()):
@@ -62,9 +65,8 @@ class SchemaDef(plugins.PythonPlugin):
         return result
 
     def __str__(self):
-        return "SchemaDef({}, {}, {})".format(
+        return "SchemaDef({}, {})".format(
             repr(self.name),
-            repr(self.execution_scope),
             repr(self.filepath)
         )
 
@@ -72,11 +74,9 @@ class SchemaDef(plugins.PythonPlugin):
         return (
             "otio.schema.SchemaDef("
             "name={}, "
-            "execution_scope={}, "
             "filepath={}"
             ")".format(
                 repr(self.name),
-                repr(self.execution_scope),
                 repr(self.filepath)
             )
         )

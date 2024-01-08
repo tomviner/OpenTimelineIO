@@ -1,35 +1,15 @@
 #!/usr/bin/env python
 #
-# copyright 2019 pixar animation studios
-#
-# licensed under the apache license, version 2.0 (the "apache license")
-# with the following modification; you may not use this file except in
-# compliance with the apache license and the following modification to it:
-# section 6. trademarks. is deleted and replaced with:
-#
-# 6. trademarks. this license does not grant permission to use the trade
-#    names, trademarks, service marks, or product names of the licensor
-#    and its affiliates, except as required to comply with section 4(c) of
-#    the license and to reproduce the content of the notice file.
-#
-# you may obtain a copy of the apache license at
-#
-#     http://www.apache.org/licenses/license-2.0
-#
-# unless required by applicable law or agreed to in writing, software
-# distributed under the apache license with the above modification is
-# distributed on an "as is" basis, without warranties or conditions of any
-# kind, either express or implied. see the apache license for the specific
-# language governing permissions and limitations under the apache license.
-#
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Contributors to the OpenTimelineIO project
 
 """Print information about the OTIO plugin ecosystem."""
 
 import argparse
 import fnmatch
 import textwrap
-import opentimelineio as otio
 
+import opentimelineio as otio
 
 OTIO_PLUGIN_TYPES = ['all'] + otio.plugins.manifest.OTIO_PLUGIN_TYPES
 
@@ -78,6 +58,15 @@ def _parsed_args():
         nargs='?',
         help='Only print information about plugins that match this glob.'
     )
+    parser.add_argument(
+        '--version',
+        default=False,
+        action="store_true",
+        help=(
+            "Print the otio and installed plugin package version "
+            "information to the commandline."
+        ),
+    )
 
     return parser.parse_args()
 
@@ -90,8 +79,8 @@ def _supported_features_formatted(feature_map, _):
     extra_features = []
     for kind in ["read", "write"]:
         if (
-            "{}_from_string".format(kind) in feature_map
-            and "{}_from_file".format(kind) not in feature_map
+            f"{kind}_from_string" in feature_map
+            and f"{kind}_from_file" not in feature_map
         ):
             extra_features.append(
                 "{0}_from_file (calls: {0}_from_string)".format(kind)
@@ -100,13 +89,13 @@ def _supported_features_formatted(feature_map, _):
     if extra_features:
         print("    implicit supported features:")
         for feat in extra_features:
-            print("      {}".format(feat))
+            print(f"      {feat}")
 
 
 def _schemadefs_formatted(feature_map, args):
     print("    SchemaDefs:")
     for sd in feature_map.keys():
-        print("      {}".format(sd))
+        print(f"      {sd}")
         _docs_formatted(feature_map[sd]['doc'], args, indent=8)
 
 
@@ -121,7 +110,14 @@ def _docs_formatted(docstring, arg_map, indent=4):
     initial_indent = prefix
     subsequent_indent = " " * len(prefix)
 
-    block = docstring.split("\n")
+    try:
+        block = docstring.split("\n")
+    except AttributeError:
+        raise RuntimeError(
+            "Plugin: '{}' is missing a docstring.  Make sure the doctring is "
+            "assigned to the __doc__ variable name.".format(arg_map['plugname'])
+        )
+
     fmt_block = []
     for line in block:
         line = textwrap.fill(
@@ -162,7 +158,7 @@ def _print_field(key, val, **args):
         _FORMATTER[key](val, args)
         return
 
-    print("    {}: {}".format(key, val))
+    print(f"    {key}: {val}")
 
 
 def main():
@@ -178,10 +174,20 @@ def main():
     # load all the otio plugins
     active_plugin_manifest = otio.plugins.ActiveManifest()
 
+    # print version information to the shell
+    if args.version:
+        print(f"OpenTimelineIO version: {otio.__version__}")
+
+        entry_points = otio.plugins.manifest.plugin_entry_points()
+        if entry_points:
+            print("Plugins from installed packages:")
+            for plugin in entry_points:
+                print(f"   {plugin.dist.name} {plugin.dist.version}")
+
     # list the loaded manifests
     print("Manifests loaded:")
     for mf in active_plugin_manifest.source_files:
-        print("  {}".format(mf))
+        print(f"  {mf}")
 
     for pt in plugin_types:
         # hooks have special code (see below)
@@ -190,7 +196,7 @@ def main():
 
         # header
         print("")
-        print("{}:".format(pt))
+        print(f"{pt}:")
 
         # filter plugins by the patterns passed in on the command line
         plugin_by_type = getattr(active_plugin_manifest, pt)
@@ -204,7 +210,7 @@ def main():
             print("    (none found)")
 
         for plug in plugins:
-            print("  {}".format(plug.name))
+            print(f"  {plug.name}")
 
             try:
                 info = plug.plugin_info_map()
@@ -223,7 +229,8 @@ def main():
                     key,
                     val,
                     long_docs=args.long_docs,
-                    attribs=args.attribs
+                    attribs=args.attribs,
+                    plugname=plug.name,
                 )
 
     # hooks aren't really plugin objects, instead they're a mapping of hook
@@ -236,9 +243,9 @@ def main():
             args.plugpattern
         )
         for hookname in hooknames:
-            print("  {}".format(hookname))
+            print(f"  {hookname}")
             for hook_script in active_plugin_manifest.hooks[hookname]:
-                print("    {}".format(hook_script))
+                print(f"    {hook_script}")
             if not active_plugin_manifest.hooks[hookname]:
                 print("    (no hook scripts attached)")
 

@@ -1,27 +1,7 @@
 #!/usr/bin/env python
 #
-# Copyright 2017 Pixar Animation Studios
-#
-# Licensed under the Apache License, Version 2.0 (the "Apache License")
-# with the following modification; you may not use this file except in
-# compliance with the Apache License and the following modification to it:
-# Section 6. Trademarks. is deleted and replaced with:
-#
-# 6. Trademarks. This License does not grant permission to use the trade
-#    names, trademarks, service marks, or product names of the Licensor
-#    and its affiliates, except as required to comply with Section 4(c) of
-#    the License and to reproduce the content of the NOTICE file.
-#
-# You may obtain a copy of the Apache License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the Apache License with the above modification is
-# distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-# KIND, either express or implied. See the Apache License for the specific
-# language governing permissions and limitations under the Apache License.
-#
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Contributors to the OpenTimelineIO project
 
 """Example OTIO script that generates an OTIO from a single quicktime by using
 ffprobe to detect shot breaks.
@@ -102,7 +82,7 @@ def _media_start_end_of(media_path, fps):
     out, err = proc.communicate()
     if proc.returncode != 0:
         raise FFProbeFailedError(
-            "FFProbe Failed with error: {0}, output: {1}".format(
+            "FFProbe Failed with error: {}, output: {}".format(
                 err, out
             )
         )
@@ -178,7 +158,7 @@ def _timeline_with_breaks(name, full_path, dryrun=False):
         ).rescaled_to(fps)
 
         clip = otio.schema.Clip()
-        clip.name = "shot {0}".format(shot_index)
+        clip.name = f"shot {shot_index}"
         clip.source_range = otio.opentime.range_from_start_end_time(
             start_time,
             end_time_exclusive
@@ -216,7 +196,7 @@ def _verify_ffprobe():
     out, err = proc.communicate()
     if proc.returncode != 0:
         raise FFProbeFailedError(
-            "FFProbe Failed with error: {0}, output: {1}".format(
+            "FFProbe Failed with error: {}, output: {}".format(
                 err, out
             )
         )
@@ -229,14 +209,16 @@ def _ffprobe_fps(name, full_path, dryrun=False):
         name,
         full_path,
         dryrun,
-        arguments=["{0}".format(full_path)],
+        arguments=[f"{full_path}"],
         message="framerate"
     )
 
     if dryrun:
         return 1.0
 
-    for line in err.split('\n'):
+    err_str = err.decode("utf-8")
+
+    for line in err_str.split('\n'):
         if not ("Stream" in line and "Video" in line):
             continue
 
@@ -265,11 +247,11 @@ def _ffprobe_output(
         "compact=p=0",
         "-f",
         "lavfi",
-        "movie={0},select=gt(scene\\,.1)".format(full_path)
+        f"movie={full_path},select=gt(scene\\,.1)"
     ]
 
     if message:
-        print("Scanning {0} for {1}...".format(name, message))
+        print(f"Scanning {name} for {message}...")
 
     cmd = ["ffprobe"] + arguments
 
@@ -284,7 +266,7 @@ def _ffprobe_output(
     out, err = proc.communicate()
     if proc.returncode != 0:
         raise FFProbeFailedError(
-            "FFProbe Failed with error: {0}, output: {1}".format(
+            "FFProbe Failed with error: {}, output: {}".format(
                 err, out
             )
         )
@@ -313,7 +295,7 @@ def main():
         otio_filename = os.path.splitext(name)[0] + ".otio"
         otio.adapters.write_to_file(new_tl, otio_filename)
         print(
-            "SAVED: {0} with {1} clips.".format(
+            "SAVED: {} with {} clips.".format(
                 otio_filename,
                 len(new_tl.tracks[0])
             )

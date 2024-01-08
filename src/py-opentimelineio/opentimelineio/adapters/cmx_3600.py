@@ -1,26 +1,5 @@
-#
-# Copyright 2017 Pixar Animation Studios
-#
-# Licensed under the Apache License, Version 2.0 (the "Apache License")
-# with the following modification; you may not use this file except in
-# compliance with the Apache License and the following modification to it:
-# Section 6. Trademarks. is deleted and replaced with:
-#
-# 6. Trademarks. This License does not grant permission to use the trade
-#    names, trademarks, service marks, or product names of the Licensor
-#    and its affiliates, except as required to comply with Section 4(c) of
-#    the License and to reproduce the content of the NOTICE file.
-#
-# You may obtain a copy of the Apache License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the Apache License with the above modification is
-# distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-# KIND, either express or implied. See the Apache License for the specific
-# language governing permissions and limitations under the Apache License.
-#
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Contributors to the OpenTimelineIO project
 
 """OpenTimelineIO CMX 3600 EDL Adapter"""
 
@@ -33,9 +12,9 @@
 # TODO: currently tracks with linked audio/video will lose their linkage when
 #       read into OTIO.
 
+import copy
 import os
 import re
-import math
 import collections
 
 from .. import (
@@ -51,7 +30,7 @@ class EDLParseError(exceptions.OTIOError):
 
 # regex for parsing the playback speed of an M2 event
 SPEED_EFFECT_RE = re.compile(
-    r"(?P<name>.*?)\s*(?P<speed>[0-9\.]*)\s*(?P<tc>[0-9:]{11})$"
+    r"(?P<name>.*?)\s*(?P<speed>-?[0-9\.]*)\s*(?P<tc>[0-9:]{11})$"
 )
 
 
@@ -85,16 +64,23 @@ channel_map = {
 # the comment string for the media reference:
 #   'avid': '* FROM CLIP:' (default)
 #   'nucoda': '* FROM FILE:'
+#   'premiere': None (If Adobe Premiere imports an EDL that uses
+#                     a "FROM" comment will result in the clips
+#                     being named UNKNOWN instead of using the reel or file name)
 # When adding a new style, please be sure to add sufficient tests
 # to verify both the new and existing styles.
-VALID_EDL_STYLES = ['avid', 'nucoda']
+VALID_EDL_STYLES = {
+    'avid': 'CLIP',
+    'nucoda': 'FILE',
+    'premiere': None,
+}
 
 
 def _extend_source_range_duration(obj, duration):
     obj.source_range = obj.source_range.duration_extended_by(duration)
 
 
-class EDLParser(object):
+class EDLParser:
     def __init__(self, edl_string, rate=24, ignore_timecode_mismatch=False):
         self.timeline = schema.Timeline()
 
@@ -108,10 +94,17 @@ class EDLParser(object):
 
         # TODO: Sort the tracks V, then A1,A2,etc.
 
-    def add_clip(self, line, comments, rate=24):
+    def add_clip(self, line, comments, rate=24, transition_line=None):
         comment_handler = CommentHandler(comments)
-        clip_handler = ClipHandler(line, comment_handler.handled, rate=rate)
+        clip_handler = ClipHandler(
+            line,
+            comment_handler.handled,
+            rate=rate,
+            transition_line=transition_line
+        )
         clip = clip_handler.clip
+        transition = clip_handler.transition
+        # Add unhandled comments as general comments to meta data.
         if comment_handler.unhandled:
             clip.metadata.setdefault("cmx_3600", {})
             clip.metadata['cmx_3600'].setdefault("comments", [])
@@ -128,71 +121,70 @@ class EDLParser(object):
             clip.metadata.setdefault("cmx_3600", {})
             clip.metadata['cmx_3600']['reel'] = clip_handler.reel
 
-        # each edit point between two clips is a transition. the default is a
-        # cut in the edl format the transition codes are for the transition
-        # into the clip
-        self.add_transition(
-            clip_handler,
-            clip_handler.transition_type,
-            clip_handler.transition_data
+        edl_rate = clip_handler.edl_rate
+        record_in = opentime.from_timecode(
+            clip_handler.record_tc_in,
+            edl_rate
+        )
+        record_out = opentime.from_timecode(
+            clip_handler.record_tc_out,
+            edl_rate
         )
 
-        tracks = self.tracks_for_channel(clip_handler.channel_code)
-        for track in tracks:
+        src_duration = clip.duration()
+        rec_duration = record_out - record_in
+        if rec_duration != src_duration:
+            motion = comment_handler.handled.get('motion_effect')
+            freeze = comment_handler.handled.get('freeze_frame')
+            if motion is not None or freeze is not None:
+                # Adjust the clip to match the record duration
+                clip.source_range = opentime.TimeRange(
+                    start_time=clip.source_range.start_time,
+                    duration=rec_duration
+                )
 
-            edl_rate = clip_handler.edl_rate
-            record_in = opentime.from_timecode(
-                clip_handler.record_tc_in,
-                edl_rate
-            )
-            record_out = opentime.from_timecode(
-                clip_handler.record_tc_out,
-                edl_rate
-            )
-
-            src_duration = clip.duration()
-            rec_duration = record_out - record_in
-            if rec_duration != src_duration:
-                motion = comment_handler.handled.get('motion_effect')
-                freeze = comment_handler.handled.get('freeze_frame')
-                if motion is not None or freeze is not None:
-                    # Adjust the clip to match the record duration
-                    clip.source_range = opentime.TimeRange(
-                        start_time=clip.source_range.start_time,
-                        duration=rec_duration
+                if freeze is not None:
+                    clip.effects.append(schema.FreezeFrame())
+                    # XXX remove 'FF' suffix (writing edl will add it back)
+                    if clip.name.endswith(' FF'):
+                        clip.name = clip.name[:-3]
+                elif motion is not None:
+                    fps = float(
+                        SPEED_EFFECT_RE.match(motion).group("speed")
+                    )
+                    time_scalar = fps / rate
+                    clip.effects.append(
+                        schema.LinearTimeWarp(time_scalar=time_scalar)
                     )
 
-                    if freeze is not None:
-                        clip.effects.append(schema.FreezeFrame())
-                        # XXX remove 'FF' suffix (writing edl will add it back)
-                        if clip.name.endswith(' FF'):
-                            clip.name = clip.name[:-3]
-                    elif motion is not None:
-                        fps = float(
-                            SPEED_EFFECT_RE.match(motion).group("speed")
-                        )
-                        time_scalar = fps / rate
-                        clip.effects.append(
-                            schema.LinearTimeWarp(time_scalar=time_scalar)
-                        )
+            elif self.ignore_timecode_mismatch:
+                # Pretend there was no problem by adjusting the record_out.
+                # Note that we don't actually use record_out after this
+                # point in the code, since all of the subsequent math uses
+                # the clip's source_range. Adjusting the record_out is
+                # just to document what the implications of ignoring the
+                # mismatch here entails.
+                record_out = record_in + src_duration
 
-                elif self.ignore_timecode_mismatch:
-                    # Pretend there was no problem by adjusting the record_out.
-                    # Note that we don't actually use record_out after this
-                    # point in the code, since all of the subsequent math uses
-                    # the clip's source_range. Adjusting the record_out is
-                    # just to document what the implications of ignoring the
-                    # mismatch here entails.
-                    record_out = record_in + src_duration
+            else:
+                raise EDLParseError(
+                    "Source and record duration don't match: {} != {}"
+                    " for clip {}".format(
+                        src_duration,
+                        rec_duration,
+                        clip.name
+                    ))
 
-                else:
-                    raise EDLParseError(
-                        "Source and record duration don't match: {} != {}"
-                        " for clip {}".format(
-                            src_duration,
-                            rec_duration,
-                            clip.name
-                        ))
+        # Add clip instances to the tracks
+        tracks = self.tracks_for_channel(clip_handler.channel_code)
+        for track in tracks:
+            track_transition = transition
+            if len(tracks) > 1:
+                track_clip = copy.deepcopy(clip)
+                if transition:
+                    track_transition = copy.deepcopy(transition)
+            else:
+                track_clip = clip
 
             if track.source_range is None:
                 zero = opentime.RationalTime(0, edl_rate)
@@ -211,7 +203,7 @@ class EDLParser(object):
                     raise EDLParseError(
                         "Overlapping record in value: {} for clip {}".format(
                             clip_handler.record_tc_in,
-                            clip.name
+                            track_clip.name
                         ))
 
             # If the next clip is supposed to start beyond the end of the
@@ -228,8 +220,14 @@ class EDLParser(object):
                 track.append(gap)
                 _extend_source_range_duration(track, gap.duration())
 
-            track.append(clip)
-            _extend_source_range_duration(track, clip.duration())
+            if track_transition:
+                if len(track) < 1:
+                    raise EDLParseError(
+                        "Transitions can't be at the very beginning of a track"
+                    )
+                track.append(track_transition)
+            track.append(track_clip)
+            _extend_source_range_duration(track, track_clip.duration())
 
     def guess_kind_for_track_name(self, name):
         if name.startswith("V"):
@@ -258,11 +256,6 @@ class EDLParser(object):
         # Return a list of actual tracks
         return [self.tracks_by_name[c] for c in track_names]
 
-    def add_transition(self, clip_handler, transition, data):
-        if transition not in ['C']:
-            md = clip_handler.clip.metadata.setdefault("cmx_3600", {})
-            md["transition"] = transition
-
     def parse_edl(self, edl_string, rate=24):
         # edl 'events' can be comprised of an indeterminate amount of lines
         # we are to translating 'events' to a single clip and transition
@@ -272,7 +265,8 @@ class EDLParser(object):
 
         # remove all blank lines from the edl
         edl_lines = [
-            l for l in (l.strip() for l in edl_string.splitlines()) if l
+            line for line in
+            (line.strip() for line in edl_string.splitlines()) if line
         ]
 
         while edl_lines:
@@ -314,7 +308,7 @@ class EDLParser(object):
 
                 line_1 = edl_lines.pop(0)
                 line_2 = edl_lines.pop(0)
-
+                # TODO: check if transitions can happen in this case
                 comments = []
                 while edl_lines:
                     if re.match(r'^\D', edl_lines[0]):
@@ -323,24 +317,45 @@ class EDLParser(object):
                         break
                 self.add_clip(line_1, comments, rate=rate)
                 self.add_clip(line_2, comments, rate=rate)
-
+            # Check if the first character in the line is a digit
             elif line[0].isdigit():
+                transition_line = None
                 # all 'events' start_time with an edit decision. this is
                 # denoted by the line beginning with a padded integer 000-999
                 comments = []
+                event_id = int(re.match(r'^\d+', line).group(0))
                 while edl_lines:
-                    # any non-numbered lines after an edit decision should be
-                    # treated as 'comments'
-                    # comments are string tags used by the reader to get extra
+                    # Any non-numbered lines after an edit decision should be
+                    # treated as 'comments'.
+                    # Comments are string tags used by the reader to get extra
                     # information not able to be found in the restricted edl
-                    # format
-                    if re.match(r'^\D', edl_lines[0]):
+                    # format.
+                    # If the current event id is repeated it means that there is
+                    # a transition between the current event and the preceding
+                    # one. We collect it and process it when adding the clip.
+                    m = re.match(r'^\d+', edl_lines[0])
+                    if not m:
                         comments.append(edl_lines.pop(0))
                     else:
-                        break
+                        if int(m.group(0)) == event_id:
+                            # It is not possible to have multiple transitions
+                            # for the same event.
+                            if transition_line:
+                                raise EDLParseError(
+                                    'Invalid transition %s' % edl_lines[0]
+                                )
+                            # Same event id, this is a transition
+                            transition_line = edl_lines.pop(0)
+                        else:
+                            # New event, stop collecting comments and transitions
+                            break
 
-                self.add_clip(line, comments, rate=rate)
-
+                self.add_clip(
+                    line,
+                    comments,
+                    rate=rate,
+                    transition_line=transition_line
+                )
             else:
                 raise EDLParseError('Unknown event type')
 
@@ -351,22 +366,59 @@ class EDLParser(object):
                 track.source_range = None
 
 
-class ClipHandler(object):
+class ClipHandler:
+    # /path/filename.[1001-1020].ext
+    image_sequence_pattern = re.compile(
+        r'.*\.(?P<range>\[(?P<start>[0-9]+)-(?P<end>[0-9]+)\])\.\w+$'
+    )
 
-    def __init__(self, line, comment_data, rate=24):
+    def __init__(self, line, comment_data, rate=24, transition_line=None):
         self.clip_num = None
         self.reel = None
         self.channel_code = None
         self.edl_rate = rate
         self.transition_id = None
         self.transition_data = None
+        self.transition_type = None
         self.source_tc_in = None
         self.source_tc_out = None
         self.record_tc_in = None
         self.record_tc_out = None
-
+        self.clip = None
+        self.transition = None
         self.parse(line)
+        if transition_line:
+            self.parse(transition_line)
         self.clip = self.make_clip(comment_data)
+        if transition_line:
+            self.transition = self.make_transition(comment_data)
+
+    def is_image_sequence(self, comment_data):
+        return self.image_sequence_pattern.search(
+            comment_data['media_reference']
+        ) is not None
+
+    def create_imagesequence_reference(self, comment_data):
+        regex_obj = self.image_sequence_pattern.search(
+            comment_data['media_reference']
+        )
+
+        path, basename = os.path.split(comment_data['media_reference'])
+        prefix, suffix = basename.split(regex_obj.group('range'))
+        ref = schema.ImageSequenceReference(
+            target_url_base=path,
+            name_prefix=prefix,
+            name_suffix=suffix,
+            rate=self.edl_rate,
+            start_frame=int(regex_obj.group('start')),
+            frame_zero_padding=len(regex_obj.group('start')),
+            available_range=opentime.range_from_start_end_time(
+                opentime.from_timecode(self.source_tc_in, self.edl_rate),
+                opentime.from_timecode(self.source_tc_out, self.edl_rate)
+            )
+        )
+
+        return ref
 
     def make_clip(self, comment_data):
         clip = schema.Clip()
@@ -374,7 +426,7 @@ class ClipHandler(object):
 
         # BLACK/BL and BARS are called out as "Special Source Identifiers" in
         # the documents referenced here:
-        # https://github.com/PixarAnimationStudios/OpenTimelineIO#cmx3600-edl
+        # https://github.com/AcademySoftwareFoundation/OpenTimelineIO#cmx3600-edl
         if self.reel in ['BL', 'BLACK']:
             clip.media_reference = schema.GeneratorReference()
             # TODO: Replace with enum, once one exists
@@ -384,10 +436,15 @@ class ClipHandler(object):
             # TODO: Replace with enum, once one exists
             clip.media_reference.generator_kind = 'SMPTEBars'
         elif 'media_reference' in comment_data:
-            clip.media_reference = schema.ExternalReference()
-            clip.media_reference.target_url = comment_data[
-                'media_reference'
-            ]
+            if self.is_image_sequence(comment_data):
+                clip.media_reference = self.create_imagesequence_reference(
+                    comment_data
+                )
+            else:
+                clip.media_reference = schema.ExternalReference()
+                clip.media_reference.target_url = comment_data[
+                    'media_reference'
+                ]
         else:
             clip.media_reference = schema.MissingReference()
 
@@ -405,6 +462,15 @@ class ClipHandler(object):
                 os.path.basename(clip.media_reference.target_url)
             )[0]
 
+        elif (
+            clip.media_reference and
+            hasattr(clip.media_reference, 'target_url_base') and
+            clip.media_reference.target_url_base is not None
+        ):
+            clip.name = os.path.splitext(
+                os.path.basename(_get_image_sequence_url(clip))
+            )[0]
+
         asc_sop = comment_data.get('asc_sop', None)
         asc_sat = comment_data.get('asc_sat', None)
         if asc_sop or asc_sat:
@@ -414,7 +480,7 @@ class ClipHandler(object):
             sat = 1.0
 
             if asc_sop:
-                triple = r'([-+]?[\d.]+) ([-+]?[\d.]+) ([-+]?[\d.]+)'
+                triple = r'([-+]?[\d.]+),? ([-+]?[\d.]+),? ([-+]?[\d.]+),?'
                 m = re.match(
                     r'\('
                     + triple
@@ -430,7 +496,7 @@ class ClipHandler(object):
                     power = [floats[6], floats[7], floats[8]]
                 else:
                     raise EDLParseError(
-                        'Invalid ASC_SOP found: {}'.format(asc_sop))
+                        f'Invalid ASC_SOP found: {asc_sop}')
 
             if asc_sat:
                 sat = float(asc_sat)
@@ -444,7 +510,11 @@ class ClipHandler(object):
                 }
             }
 
-        if 'locator' in comment_data:
+        # Get the clip name from "TO CLIP NAME" if present
+        if 'dest_clip_name' in comment_data:
+            clip.name = comment_data['dest_clip_name']
+
+        if 'locators' in comment_data:
             # An example EDL locator line looks like this:
             # * LOC: 01:00:01:14 RED     ANIM FIX NEEDED
             # We get the part after "LOC: " as the comment_data entry
@@ -453,11 +523,15 @@ class ClipHandler(object):
             # variations of EDL, so if we are lenient then maybe we
             # can handle more of them? Only real-world testing will
             # determine this for sure...
-            m = re.match(
-                r'(\d\d:\d\d:\d\d:\d\d)\s+(\w*)(\s+|$)(.*)',
-                comment_data["locator"]
-            )
-            if m:
+            for locator in comment_data['locators']:
+                m = re.match(
+                    r'(\d\d:\d\d:\d\d:\d\d)\s+(\w*)(\s+|$)(.*)',
+                    locator
+                )
+                if not m:
+                    # TODO: Should we report this as a warning somehow?
+                    continue
+
                 marker = schema.Marker()
                 marker.marked_range = opentime.TimeRange(
                     start_time=opentime.from_timecode(
@@ -471,7 +545,6 @@ class ClipHandler(object):
                 # is not a valid enum somehow.
                 color_parsed_from_file = m.group(2)
 
-                marker.metadata.clear()
                 marker.metadata.update({
                     "cmx_3600": {
                         "color": color_parsed_from_file
@@ -489,9 +562,6 @@ class ClipHandler(object):
 
                 marker.name = m.group(4)
                 clip.markers.append(marker)
-            else:
-                # TODO: Should we report this as a warning somehow?
-                pass
 
         clip.source_range = opentime.range_from_start_end_time(
             opentime.from_timecode(self.source_tc_in, self.edl_rate),
@@ -511,7 +581,7 @@ class ClipHandler(object):
             # denotes frame count
             # i haven't figured out how the key transitions (K, KB, KO) work
             (
-                self.clip_num,
+                self.transition_id,
                 self.reel,
                 self.channel_code,
                 self.transition_type,
@@ -523,22 +593,29 @@ class ClipHandler(object):
             ) = fields
 
         elif field_count == 8:
+            edit_type = None
             # no transition data
             # this is for basic cuts
             (
                 self.clip_num,
                 self.reel,
                 self.channel_code,
-                self.transition_type,
+                edit_type,
                 self.source_tc_in,
                 self.source_tc_out,
                 self.record_tc_in,
                 self.record_tc_out
             ) = fields
-
+            # Double check it is a cut
+            if edit_type not in ["C"]:
+                raise EDLParseError(
+                    'incorrect edit type {} in form statement: {}'.format(
+                        edit_type, line,
+                    )
+                )
         else:
             raise EDLParseError(
-                'incorrect number of fields [{0}] in form statement: {1}'
+                'incorrect number of fields [{}] in form statement: {}'
                 ''.format(field_count, line))
 
         # Frame numbers (not just timecode) are ok
@@ -561,8 +638,77 @@ class ClipHandler(object):
                     )
                 )
 
+    def make_transition(self, comment_data):
+        # Do some sanity check
+        if not self.clip:
+            raise RuntimeError("Transitions can't be handled without a clip")
+        if self.transition_id != self.clip_num:
+            raise EDLParseError(
+                'transition and event id mismatch: {} vs {}'.format(
+                    self.transaction_id, self.clip_num,
+                )
+            )
+        if re.match(r'W(\d{3})', self.transition_type):
+            otio_transition_type = "SMPTE_Wipe"
+        elif self.transition_type in ['D']:
+            otio_transition_type = schema.TransitionTypes.SMPTE_Dissolve
+        else:
+            raise EDLParseError(
+                "Transition type '{}' not supported by the CMX EDL reader "
+                "currently.".format(self.transition_type)
+            )
+        # TODO: support delayed transition like described here:
+        # https://xmil.biz/EDL-X/CMX3600.pdf
+        transition_duration = opentime.RationalTime(
+            float(self.transition_data),
+            self.clip.source_range.duration.rate
+        )
+        # Note: Transitions in EDLs are unconventionally represented.
+        #
+        # Where a transition might normally be visualized like:
+        #            |---57.0 Trans 43.0----|
+        # |------Clip1 102.0------|----------Clip2 143.0----------|Clip3 24.0|
+        #
+        # In an EDL it can be thought of more like this:
+        #            |---0.0 Trans 100.0----|
+        # |Clip1 45.0|----------------Clip2 200.0-----------------|Clip3 24.0|
+        #
+        # So the transition starts at the beginning of the clip with `duration`
+        # frames from the previous clip.
 
-class CommentHandler(object):
+        # Give the transition a detailed name if we can
+        transition_name = '{} to {}'.format(
+            otio_transition_type,
+            self.clip.name,
+        )
+        if 'dest_clip_name' in comment_data:
+            if 'clip_name' in comment_data:
+                transition_name = '{} from {} to {}'.format(
+                    otio_transition_type,
+                    comment_data['clip_name'],
+                    comment_data['dest_clip_name'],
+                )
+
+        new_trx = schema.Transition(
+            name=transition_name,
+            # only supported type at the moment
+            transition_type=otio_transition_type,
+            metadata={
+                'cmx_3600': {
+                    'transition': self.transition_type,
+                    'transition_duration': transition_duration.value,
+                }
+            },
+        )
+        new_trx.in_offset = opentime.RationalTime(
+            0,
+            transition_duration.rate
+        )
+        new_trx.out_offset = transition_duration
+        return new_trx
+
+
+class CommentHandler:
     # this is the for that all comment 'id' tags take
     regex_template = r'\*?\s*{id}:?\s*(?P<comment_body>.*)'
 
@@ -572,13 +718,15 @@ class CommentHandler(object):
     # needs to be ordered so that FROM CLIP NAME gets matched before FROM CLIP
     comment_id_map = collections.OrderedDict([
         ('FROM CLIP NAME', 'clip_name'),
+        ('TO CLIP NAME', 'dest_clip_name'),
         ('FROM CLIP', 'media_reference'),
         ('FROM FILE', 'media_reference'),
-        ('LOC', 'locator'),
+        ('LOC', 'locators'),
         ('ASC_SOP', 'asc_sop'),
         ('ASC_SAT', 'asc_sat'),
         ('M2', 'motion_effect'),
         ('\\* FREEZE FRAME', 'freeze_frame'),
+        ('\\* OTIO REFERENCE [a-zA-Z]+', 'media_reference'),
     ])
 
     def __init__(self, comments):
@@ -592,122 +740,23 @@ class CommentHandler(object):
             regex = self.regex_template.format(id=comment_id)
             match = re.match(regex, comment)
             if match:
-                self.handled[comment_type] = match.group(
-                    'comment_body'
-                ).strip()
+                comment_body = match.group('comment_body').strip()
+
+                # Special case for locators. There can be multiple locators per clip.
+                if comment_type == 'locators':
+                    try:
+                        self.handled[comment_type].append(comment_body)
+                    except KeyError:
+                        self.handled[comment_type] = [comment_body]
+
+                else:
+                    self.handled[comment_type] = comment_body
+
                 break
         else:
             stripped = comment.lstrip('*').strip()
             if stripped:
                 self.unhandled.append(stripped)
-
-
-def _expand_transitions(timeline):
-    """Convert clips with metadata/transition == 'D' into OTIO transitions."""
-
-    tracks = timeline.tracks
-    remove_list = []
-    replace_list = []
-    append_list = []
-    for track in tracks:
-        track_iter = iter(track)
-        # avid inserts an extra clip for the source
-        prev_prev = None
-        prev = None
-        clip = next(track_iter, None)
-        next_clip = next(track_iter, None)
-        while clip is not None:
-            transition_type = clip.metadata.get('cmx_3600', {}).get(
-                'transition',
-                'C'
-            )
-
-            if transition_type == 'C':
-                # nothing to do, continue to the next iteration of the loop
-                prev_prev = prev
-                prev = clip
-                clip = next_clip
-                next_clip = next(track_iter, None)
-                continue
-            if transition_type not in ['D']:
-                raise EDLParseError(
-                    "Transition type '{}' not supported by the CMX EDL reader "
-                    "currently.".format(transition_type)
-                )
-
-            transition_duration = clip.duration()
-
-            # EDL doesn't have enough data to know where the cut point was, so
-            # this arbitrarily puts it in the middle of the transition
-            pre_cut = math.floor(transition_duration.value / 2)
-            post_cut = transition_duration.value - pre_cut
-            mid_tran_cut_pre_duration = opentime.RationalTime(
-                pre_cut,
-                transition_duration.rate
-            )
-            mid_tran_cut_post_duration = opentime.RationalTime(
-                post_cut,
-                transition_duration.rate
-            )
-
-            # expand the previous
-            expansion_clip = None
-            if prev and not prev_prev:
-                expansion_clip = prev
-            elif prev_prev:
-                expansion_clip = prev_prev
-                if prev:
-                    remove_list.append((track, prev))
-
-            _extend_source_range_duration(expansion_clip, mid_tran_cut_pre_duration)
-
-            # rebuild the clip as a transition
-            new_trx = schema.Transition(
-                name=clip.name,
-                # only supported type at the moment
-                transition_type=schema.TransitionTypes.SMPTE_Dissolve,
-                metadata=clip.metadata
-            )
-            new_trx.in_offset = mid_tran_cut_pre_duration
-            new_trx.out_offset = mid_tran_cut_post_duration
-
-            #                   in     from  to
-            replace_list.append((track, clip, new_trx))
-
-            # expand the next_clip
-            if next_clip:
-                sr = next_clip.source_range
-                next_clip.source_range = opentime.TimeRange(
-                    sr.start_time - mid_tran_cut_post_duration,
-                    sr.duration + mid_tran_cut_post_duration
-                )
-            else:
-                fill = schema.Gap(
-                    source_range=opentime.TimeRange(
-                        duration=mid_tran_cut_post_duration,
-                        start_time=opentime.RationalTime(
-                            0,
-                            transition_duration.rate
-                        )
-                    )
-                )
-                append_list.append((track, fill))
-
-            prev = clip
-            clip = next_clip
-            next_clip = next(track_iter, None)
-
-    for (track, from_clip, to_transition) in replace_list:
-        track[track.index(from_clip)] = to_transition
-
-    for (track, clip_to_remove) in list(set(remove_list)):
-        # if clip_to_remove in track:
-        track.remove(clip_to_remove)
-
-    for (track, clip) in append_list:
-        track.append(clip)
-
-    return timeline
 
 
 def read_from_string(input_str, rate=24, ignore_timecode_mismatch=False):
@@ -741,7 +790,6 @@ def read_from_string(input_str, rate=24, ignore_timecode_mismatch=False):
         ignore_timecode_mismatch=ignore_timecode_mismatch
     )
     result = parser.timeline
-    result = _expand_transitions(result)
     return result
 
 
@@ -750,9 +798,9 @@ def write_to_string(input_otio, rate=None, style='avid', reelname_len=8):
     # also only works for a single video track at the moment
 
     video_tracks = [t for t in input_otio.tracks
-                    if t.kind == schema.TrackKind.Video]
+                    if t.kind == schema.TrackKind.Video and t.enabled]
     audio_tracks = [t for t in input_otio.tracks
-                    if t.kind == schema.TrackKind.Audio]
+                    if t.kind == schema.TrackKind.Audio and t.enabled]
 
     if len(video_tracks) != 1:
         raise exceptions.NotSupportedError(
@@ -784,7 +832,7 @@ def write_to_string(input_otio, rate=None, style='avid', reelname_len=8):
     return writer.get_content_for_track_at_index(0, title=input_otio.name)
 
 
-class EDLWriter(object):
+class EDLWriter:
     def __init__(self, tracks, rate, style, reelname_len=8):
         self._tracks = tracks
         self._rate = rate
@@ -864,27 +912,30 @@ class EDLWriter(object):
                     )
                 )
             elif isinstance(child, schema.Clip):
-                events.append(
-                    Event(
-                        child,
-                        self._tracks,
-                        track.kind,
-                        self._rate,
-                        self._style,
-                        self._reelname_len
+                if child.enabled:
+                    events.append(
+                        Event(
+                            child,
+                            self._tracks,
+                            track.kind,
+                            self._rate,
+                            self._style,
+                            self._reelname_len
+                        )
                     )
-                )
+                else:
+                    pass
             elif isinstance(child, schema.Gap):
                 # Gaps are represented as missing record timecode, no event
                 # needed.
                 pass
 
-        content = "TITLE: {}\n\n".format(title) if title else ''
-
-        # Convert each event/dissolve-event into plain text.
-        for idx, event in enumerate(events):
-            event.edit_number = idx + 1
-            content += event.to_edl_format() + '\n'
+        content = f"TITLE: {title}\n\n" if title else ''
+        if track.enabled:
+            # Convert each event/dissolve-event into plain text.
+            for idx, event in enumerate(events):
+                event.edit_number = idx + 1
+                content += event.to_edl_format() + '\n'
 
         return content
 
@@ -918,7 +969,7 @@ def _relevant_timing_effect(clip):
     return timing_effect
 
 
-class Event(object):
+class Event:
     def __init__(
         self,
         clip,
@@ -929,7 +980,13 @@ class Event(object):
         reelname_len
     ):
 
-        line = EventLine(kind, rate, reel=_reel_from_clip(clip, reelname_len))
+        # Premiere style uses AX for the reel name
+        if style == 'premiere':
+            reel = 'AX'
+        else:
+            reel = _reel_from_clip(clip, reelname_len)
+
+        line = EventLine(kind, rate, reel=reel)
         line.source_in = clip.source_range.start_time
         line.source_out = clip.source_range.end_time_exclusive()
 
@@ -987,7 +1044,7 @@ class Event(object):
         return "\n".join(lines)
 
 
-class DissolveEvent(object):
+class DissolveEvent:
 
     def __init__(
         self,
@@ -1106,7 +1163,7 @@ class DissolveEvent(object):
         return "\n".join(lines)
 
 
-class EventLine(object):
+class EventLine:
     def __init__(self, kind, rate, reel='AX'):
         self.reel = reel
         self._kind = 'V' if kind == schema.TrackKind.Video else 'A'
@@ -1166,6 +1223,13 @@ def _generate_comment_lines(
         if hasattr(clip.media_reference, 'target_url'):
             url = clip.media_reference.target_url
 
+        elif hasattr(clip.media_reference, 'abstract_target_url'):
+            url = _get_image_sequence_url(clip)
+
+        if url:
+            # Premiere style uses the base name of the media reference
+            if style == 'premiere':
+                clip.name = os.path.basename(clip.media_reference.target_url)
     else:
         url = clip.name
 
@@ -1194,27 +1258,36 @@ def _generate_comment_lines(
         lines.append(
             "* {from_or_to} CLIP NAME:  {name}{suffix}".format(
                 from_or_to=from_or_to,
-                name=clip.name,
+                name=os.path.basename(url) if style == 'premiere' else clip.name,
                 suffix=suffix
             )
         )
     if timing_effect and timing_effect.effect_name == "FreezeFrame":
         lines.append('* * FREEZE FRAME')
-    if url and style == 'avid':
-        lines.append("* {from_or_to} CLIP: {url}".format(
-            from_or_to=from_or_to,
-            url=url
-        ))
-    if url and style == 'nucoda':
-        lines.append("* {from_or_to} FILE: {url}".format(
-            from_or_to=from_or_to,
-            url=url
-        ))
+
+    # If the style has a spec, apply it and add it as a comment
+    style_spec = VALID_EDL_STYLES.get(style)
+    if url:
+        if style_spec:
+            lines.append("* {from_or_to} {style_spec}: {url}".format(
+                from_or_to=from_or_to,
+                style_spec=style_spec,
+                url=_flip_windows_slashes(url)
+            ))
+        else:
+            lines.append("* OTIO REFERENCE {from_or_to}: {url}".format(
+                from_or_to=from_or_to,
+                url=_flip_windows_slashes(url)
+            ))
 
     if reelname_len and not clip.metadata.get('cmx_3600', {}).get('reel'):
         lines.append("* OTIO TRUNCATED REEL NAME FROM: {url}".format(
             url=os.path.basename(_flip_windows_slashes(url or clip.name))
         ))
+
+    if style == 'premiere':
+        clip.metadata.setdefault('cmx_3600', {})
+        clip.metadata['cmx_3600'].update({'reel': 'AX'})
 
     cdl = clip.metadata.get('cdl')
     if cdl:
@@ -1250,15 +1323,31 @@ def _generate_comment_lines(
         if not color and meta and meta.get("color"):
             color = meta.get("color").upper()
         comment = (marker.name or '').upper()
-        lines.append("* LOC: {} {:7} {}".format(timecode, color, comment))
+        lines.append(f"* LOC: {timecode} {color:7} {comment}")
 
     # If we are carrying any unhandled CMX 3600 comments on this clip
     # then output them blindly.
     extra_comments = clip.metadata.get('cmx_3600', {}).get('comments', [])
     for comment in extra_comments:
-        lines.append("* {}".format(comment))
+        lines.append(f"* {comment}")
 
     return lines
+
+
+def _get_image_sequence_url(clip):
+    ref = clip.media_reference
+    start_frame, end_frame = ref.frame_range_for_time_range(
+        clip.trimmed_range()
+    )
+
+    frame_range_str = '[{start}-{end}]'.format(
+        start=start_frame,
+        end=end_frame
+    )
+
+    url = clip.media_reference.abstract_target_url(frame_range_str)
+
+    return url
 
 
 def _flip_windows_slashes(path):
@@ -1274,10 +1363,18 @@ def _reel_from_clip(clip, reelname_len):
 
     _reel = clip.name or 'AX'
 
-    if isinstance(clip.media_reference, schema.ExternalReference):
-        _reel = clip.media_reference.name or os.path.basename(
-            clip.media_reference.target_url
-        )
+    valid_refs = (schema.ExternalReference, schema.ImageSequenceReference)
+    if isinstance(clip.media_reference, valid_refs):
+        if clip.media_reference.name:
+            _reel = clip.media_reference.name
+
+        elif hasattr(clip.media_reference, 'target_url'):
+            _reel = os.path.basename(
+                clip.media_reference.target_url
+            )
+
+        else:
+            _reel = _get_image_sequence_url(clip)
 
     # Flip Windows slashes
     _reel = os.path.basename(_flip_windows_slashes(_reel))

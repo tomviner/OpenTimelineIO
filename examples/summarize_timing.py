@@ -1,27 +1,7 @@
 #!/usr/bin/env python
 #
-# Copyright 2017 Pixar Animation Studios
-#
-# Licensed under the Apache License, Version 2.0 (the "Apache License")
-# with the following modification; you may not use this file except in
-# compliance with the Apache License and the following modification to it:
-# Section 6. Trademarks. is deleted and replaced with:
-#
-# 6. Trademarks. This License does not grant permission to use the trade
-#    names, trademarks, service marks, or product names of the Licensor
-#    and its affiliates, except as required to comply with Section 4(c) of
-#    the License and to reproduce the content of the NOTICE file.
-#
-# You may obtain a copy of the Apache License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the Apache License with the above modification is
-# distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-# KIND, either express or implied. See the Apache License for the specific
-# language governing permissions and limitations under the Apache License.
-#
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Contributors to the OpenTimelineIO project
 
 """Example OTIO script that reads a timeline and then prints a summary
 of the video clips found, including re-timing effects on each one.
@@ -55,7 +35,7 @@ def _summarize_effects(item):
 
 def _summarize_range(label, time_range):
     if time_range is None:
-        print("\t{}: None".format(label))
+        print(f"\t{label}: None")
     else:
         print(
             "\t{}: {} - {} (Duration: {})".format(
@@ -74,8 +54,8 @@ def _summarize_range(label, time_range):
 def _summarize_timeline(timeline):
     # Here we iterate over each video track, and then just the top-level
     # items in each track. If you want to traverse the whole nested structure
-    # then you can use: for item in timeline.each_child()
-    # or just clips via: for clip in timeline.each_clip()
+    # then you can use: for item in timeline.find_children()
+    # or just clips via: for clip in timeline.find_clips()
     # See also: https://opentimelineio.readthedocs.io/en/latest/tutorials/otio-timeline-structure.html  # noqa
     for track in timeline.video_tracks():
         print(
@@ -90,7 +70,7 @@ def _summarize_timeline(timeline):
         for item in track:
             if isinstance(item, otio.schema.Clip):
                 clip = item
-                print("Clip: {}".format(clip.name))
+                print(f"Clip: {clip.name}")
                 # See the documentation to understand the difference
                 # between each of these ranges:
                 # https://opentimelineio.readthedocs.io/en/latest/tutorials/time-ranges.html

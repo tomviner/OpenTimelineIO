@@ -1,26 +1,5 @@
-#
-# Copyright 2017 Pixar Animation Studios
-#
-# Licensed under the Apache License, Version 2.0 (the "Apache License")
-# with the following modification; you may not use this file except in
-# compliance with the Apache License and the following modification to it:
-# Section 6. Trademarks. is deleted and replaced with:
-#
-# 6. Trademarks. This License does not grant permission to use the trade
-#    names, trademarks, service marks, or product names of the Licensor
-#    and its affiliates, except as required to comply with Section 4(c) of
-#    the License and to reproduce the content of the NOTICE file.
-#
-# You may obtain a copy of the Apache License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the Apache License with the above modification is
-# distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-# KIND, either express or implied. See the Apache License for the specific
-# language governing permissions and limitations under the Apache License.
-#
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Contributors to the OpenTimelineIO project
 
 """Transition class test harness."""
 
@@ -94,6 +73,91 @@ class TransitionTests(unittest.TestCase, otio_test_utils.OTIOAssertions):
                 repr(trx.metadata),
             )
         )
+
+    def test_setters(self):
+        trx = otio.schema.Transition(
+            name="AtoB",
+            transition_type="SMPTE.Dissolve",
+            metadata={
+                "foo": "bar"
+            }
+        )
+        self.assertEqual(trx.transition_type, "SMPTE.Dissolve")
+        trx.transition_type = "EdgeWipe"
+        self.assertEqual(trx.transition_type, "EdgeWipe")
+
+    def test_parent_range(self):
+        timeline = otio.schema.Timeline(
+            tracks=[
+                otio.schema.Track(
+                    name="V1",
+                    children=[
+                        otio.schema.Clip(
+                            name="A",
+                            source_range=otio.opentime.TimeRange(
+                                start_time=otio.opentime.RationalTime(
+                                    value=1,
+                                    rate=30
+                                ),
+                                duration=otio.opentime.RationalTime(
+                                    value=50,
+                                    rate=30
+                                )
+                            )
+                        ),
+                        otio.schema.Transition(
+                            in_offset=otio.opentime.RationalTime(
+                                value=7,
+                                rate=30
+                            ),
+                            out_offset=otio.opentime.RationalTime(
+                                value=10,
+                                rate=30
+                            ),
+                        ),
+                        otio.schema.Clip(
+                            name="B",
+                            source_range=otio.opentime.TimeRange(
+                                start_time=otio.opentime.RationalTime(
+                                    value=100,
+                                    rate=30
+                                ),
+                                duration=otio.opentime.RationalTime(
+                                    value=50,
+                                    rate=30
+                                )
+                            )
+                        ),
+                    ]
+                )
+            ]
+        )
+        trx = timeline.tracks[0][1]
+        time_range = otio.opentime.TimeRange(otio.opentime.RationalTime(43, 30),
+                                             otio.opentime.RationalTime(17, 30))
+
+        self.assertEqual(time_range,
+                         trx.range_in_parent())
+
+        self.assertEqual(time_range,
+                         trx.trimmed_range_in_parent())
+
+        trx = otio.schema.Transition(
+            in_offset=otio.opentime.RationalTime(
+                value=7,
+                rate=30
+            ),
+            out_offset=otio.opentime.RationalTime(
+                value=10,
+                rate=30
+            ),
+        )
+
+        with self.assertRaises(otio.exceptions.NotAChildError):
+            trx.range_in_parent()
+
+        with self.assertRaises(otio.exceptions.NotAChildError):
+            trx.trimmed_range_in_parent()
 
 
 if __name__ == '__main__':
