@@ -134,10 +134,16 @@ jobs:
         include:
           - os: ubuntu-latest
             arch: x86_64
+            cibw_archs: x86_64
           - os: ubuntu-latest
             arch: aarch64
+            cibw_archs: aarch64
     steps:
       - uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        if: ${{ matrix.arch == 'aarch64' }}
+        uses: docker/setup-qemu-action@v3
 
       - name: Build wheels (Python 3)
         uses: pypa/cibuildwheel@v2.16.5
