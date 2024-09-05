@@ -143,7 +143,9 @@ jobs:
 
       - name: Set up QEMU
         if: ${{ matrix.arch == 'aarch64' }}
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v2
+        with:
+          platforms: arm64
 
       - name: Build wheels (Python 3)
         uses: pypa/cibuildwheel@v2.16.5
