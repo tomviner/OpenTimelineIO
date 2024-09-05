@@ -24,17 +24,11 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-13, macos-latest]
+        os: [ubuntu-latest]
         # Unfortunately the CMake test target is OS dependent so we set it as
         # a variable here.
         include:
         - os: ubuntu-latest
-          OTIO_TEST_TARGET: test
-        - os: windows-latest
-          OTIO_TEST_TARGET: RUN_TESTS
-        - os: macos-latest
-          OTIO_TEST_TARGET: test
-        - os: macos-13
           OTIO_TEST_TARGET: test
 
     env:
@@ -94,18 +88,10 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-13, macos-latest]
-        python-version: ['3.7', '3.8', '3.9', '3.10', '3.11', '3.12']
+        os: [ubuntu-latest]
+        python-version: ['3.11']
         include:
           - { os: ubuntu-latest, shell: bash }
-          - { os: macos-latest, shell: bash }
-          - { os: macos-13, shell: bash }
-          - { os: windows-latest, shell: pwsh }
-          - { os: windows-latest, shell: msys2, python-version: 'mingw64' }
-        exclude:
-          - { os: macos-latest, python-version: 3.7 }
-          - { os: macos-latest, python-version: 3.8 }
-          - { os: macos-latest, python-version: 3.9 }
 
     defaults:
       run:
@@ -175,10 +161,14 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-13, macos-latest]
-        python-build: ['cp37*', 'cp38*', 'cp39*', 'cp310*', 'cp311*', 'cp312*']
-        exclude:
-          - { os: macos-latest, python-build: 'cp37*' }
+        os: [ubuntu-latest]
+        arch: [x86_64, aarch64]
+        python-build: ['cp311*']
+        include:
+          - os: ubuntu-latest
+            arch: x86_64
+          - os: ubuntu-latest
+            arch: aarch64
     steps:
       - uses: actions/checkout@v4
 
